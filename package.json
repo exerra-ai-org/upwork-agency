@@ -1,0 +1,19 @@
+{
+  "name": "aop-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agency Operations Platform - Unified operational platform for freelance agency management",
+  "scripts": {
+    "dev:backend": "bun run --cwd backend start:dev",
+    "dev:frontend": "bun run --cwd frontend dev",
+    "build:backend": "bun run --cwd backend build",
+    "build:frontend": "bun run --cwd frontend build",
+    "db:generate": "bun run --cwd backend prisma:generate",
+    "db:migrate": "bun run --cwd backend prisma:migrate",
+    "db:seed": "bun run --cwd backend prisma:seed",
+    "db:studio": "bun run --cwd backend prisma:studio",
+    "lint": "bun run --cwd backend lint && bun run --cwd frontend lint",
+    "format": "treefmt",
+    "format:check": "treefmt --fail-on-change"
+  }
+}

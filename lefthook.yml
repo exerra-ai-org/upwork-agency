@@ -1,0 +1,16 @@
+# lefthook.yml — Git hooks for AOP Platform
+
+pre-commit:
+  parallel: true
+  commands:
+    treefmt:
+      run: treefmt --fail-on-change
+      stage_fixed: true
+    backend-typecheck:
+      root: backend/
+      run: bunx tsc --noEmit
+      glob: '*.{ts,tsx}'
+    frontend-typecheck:
+      root: frontend/
+      run: bunx tsc --noEmit
+      glob: '*.{ts,tsx}'

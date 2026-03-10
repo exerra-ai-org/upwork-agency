@@ -10,30 +10,37 @@ export class MeetingsService {
 
   async create(dto: CreateMeetingDto): Promise<Meeting> {
     return this.prisma.meeting.create({
-      data: dto,
-      include: { proposal: { include: { client: true } } },
+      data: {
+        projectId: dto.projectId,
+        closerId: dto.closerId,
+        type: dto.type,
+        scheduledAt: new Date(dto.scheduledAt),
+        notes: dto.notes,
+        meetingUrl: dto.meetingUrl,
+        fathomUrl: dto.fathomUrl,
+        loomUrl: dto.loomUrl,
+        driveUrl: dto.driveUrl,
+      },
+      include: { project: true, closer: true },
     });
   }
 
   async findAll(
     pagination: PaginationDto,
-    filters?: { closerId?: string; status?: MeetingStatus },
+    filters?: { closerId?: string; status?: MeetingStatus; projectId?: string },
   ): Promise<PaginatedResult<Meeting>> {
     const where: Record<string, unknown> = {};
 
-    if (filters?.closerId) {
-      where.closerId = filters.closerId;
-    }
-    if (filters?.status) {
-      where.status = filters.status;
-    }
+    if (filters?.closerId) where.closerId = filters.closerId;
+    if (filters?.status) where.status = filters.status;
+    if (filters?.projectId) where.projectId = filters.projectId;
 
     const [data, total] = await Promise.all([
       this.prisma.meeting.findMany({
         where,
         skip: pagination.skip,
         take: pagination.take,
-        include: { proposal: { include: { client: true } } },
+        include: { project: true, closer: true },
         orderBy: { scheduledAt: 'desc' },
       }),
       this.prisma.meeting.count({ where }),
@@ -45,7 +52,7 @@ export class MeetingsService {
   async findById(id: string): Promise<Meeting> {
     const meeting = await this.prisma.meeting.findUnique({
       where: { id },
-      include: { proposal: { include: { client: true } }, closer: true },
+      include: { project: true, closer: true },
     });
 
     if (!meeting) {
@@ -58,10 +65,13 @@ export class MeetingsService {
   async update(id: string, dto: UpdateMeetingDto): Promise<Meeting> {
     await this.findById(id);
 
+    const data: Record<string, unknown> = { ...dto };
+    if (dto.scheduledAt) data.scheduledAt = new Date(dto.scheduledAt);
+
     return this.prisma.meeting.update({
       where: { id },
-      data: dto,
-      include: { proposal: { include: { client: true } } },
+      data,
+      include: { project: true, closer: true },
     });
   }
 
@@ -73,10 +83,12 @@ export class MeetingsService {
       data: {
         status: MeetingStatus.COMPLETED,
         completedAt: new Date(),
-        duration: dto.duration,
         notes: dto.notes,
+        fathomUrl: dto.fathomUrl,
+        loomUrl: dto.loomUrl,
+        driveUrl: dto.driveUrl,
       },
-      include: { proposal: { include: { client: true } } },
+      include: { project: true, closer: true },
     });
   }
 }

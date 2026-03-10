@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateNicheDto {
@@ -14,6 +14,11 @@ export class CreateNicheDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  organizationId?: string;
 }
 
 export class UpdateNicheDto {
@@ -36,10 +41,9 @@ export class UpdateNicheDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
-}
 
-export class AssignCloserDto {
-  @ApiProperty()
-  @IsString()
-  userId: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  organizationId?: string;
 }

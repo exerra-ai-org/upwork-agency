@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@/common/guards';
 import { PaginationDto } from '@/common/dto';
 import { VideoService } from './video.service';
@@ -18,8 +18,9 @@ export class VideoController {
   }
 
   @Get()
-  findAll(@Query() pagination: PaginationDto) {
-    return this.videoService.findAll(pagination);
+  @ApiQuery({ name: 'projectId', required: false })
+  findAll(@Query() pagination: PaginationDto, @Query('projectId') projectId?: string) {
+    return this.videoService.findAll(pagination, projectId);
   }
 
   @Get(':id')
@@ -27,9 +28,9 @@ export class VideoController {
     return this.videoService.findById(id);
   }
 
-  @Get('proposal/:proposalId')
-  findByProposalId(@Param('proposalId') proposalId: string) {
-    return this.videoService.findByProposalId(proposalId);
+  @Get('project/:projectId')
+  findByProjectId(@Param('projectId') projectId: string) {
+    return this.videoService.findByProjectId(projectId);
   }
 
   @Post(':id/view')

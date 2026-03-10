@@ -1,5 +1,5 @@
 // -------------------------------------------------------
-// AOP Platform — Prisma Schema
+// AOP Platform — Prisma Schema (Redesigned v2)
 // -------------------------------------------------------
 
 generator client {
@@ -31,7 +31,8 @@ model Team {
   id   String @id @default(uuid())
   name String
 
-  users User[]
+  users    User[]
+  projects Project[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -53,15 +54,18 @@ model User {
   teamId String? @map("team_id")
   team   Team?   @relation(fields: [teamId], references: [id])
 
-  agents          Agent[]
-  closerNiches    CloserNiche[]
-  closedProposals Proposal[]     @relation("ProposalCloser")
-  scriptsCreated  Script[]       @relation("ScriptCreator")
-  closedMeetings  Meeting[]      @relation("MeetingCloser")
-  assignedTasks   Task[]         @relation("TaskAssignee")
-  qaReviews       QAReview[]     @relation("QAReviewer")
-  eventsActed     Event[]        @relation("EventActor")
-  refreshTokens   RefreshToken[]
+  organizations UserOrganization[]
+
+  discoveredProjects Project[] @relation("ProjectDiscoveredBy")
+  lastEditedProjects Project[] @relation("ProjectLastEditedBy")
+  assignedAsCloser   Project[] @relation("ProjectCloser")
+  assignedAsPM       Project[] @relation("ProjectPM")
+
+  assignedTasks Task[]       @relation("TaskAssignee")
+  qaReviews     QAReview[]   @relation("QAReviewer")
+  eventsActed   Event[]      @relation("EventActor")
+  refreshTokens RefreshToken[]
+  meetings      Meeting[]    @relation("MeetingCloser")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -71,11 +75,11 @@ model User {
 }
 
 model RefreshToken {
-  id        String   @id @default(uuid())
-  token     String   @unique
-  userId    String   @map("user_id")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime @map("expires_at")
+  id        String    @id @default(uuid())
+  token     String    @unique
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime  @map("expires_at")
   revokedAt DateTime? @map("revoked_at")
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -85,330 +89,164 @@ model RefreshToken {
 }
 
 // -------------------------------------------------------
-// Niches (Project Categories)
+// Organizations (Multi-tenant)
 // -------------------------------------------------------
 
-model Niche {
+model Organization {
   id          String  @id @default(uuid())
-  name        String  @unique
+  name        String
   slug        String  @unique
   description String?
   isActive    Boolean @default(true) @map("is_active")
 
-  closers   CloserNiche[]
-  proposals Proposal[]
-  scripts   Script[]
+  members  UserOrganization[]
+  niches   Niche[]
+  projects Project[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@map("organizations")
+}
+
+model UserOrganization {
+  id             String       @id @default(uuid())
+  userId         String       @map("user_id")
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, organizationId])
+  @@index([userId], map: "idx_user_organizations_user")
+  @@index([organizationId], map: "idx_user_organizations_org")
+  @@map("user_organizations")
+}
+
+// -------------------------------------------------------
+// Niches (Org-scoped Project Categories)
+// -------------------------------------------------------
+
+model Niche {
+  id          String  @id @default(uuid())
+  name        String
+  slug        String
+  description String?
+  isActive    Boolean @default(true) @map("is_active")
+
+  organizationId String?       @map("organization_id")
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  projects Project[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([slug, organizationId])
   @@map("niches")
 }
 
-model CloserNiche {
-  id      String @id @default(uuid())
-  userId  String @map("user_id")
-  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  nicheId String @map("niche_id")
-  niche   Niche  @relation(fields: [nicheId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now()) @map("created_at")
-
-  @@unique([userId, nicheId])
-  @@map("closer_niches")
-}
-
 // -------------------------------------------------------
-// Accounts & Agents
+// Projects (Full Pipeline — Core Entity)
 // -------------------------------------------------------
 
-enum AccountPlatform {
-  UPWORK
-  FREELANCER
-  TOPTAL
-  OTHER
+enum ProjectStage {
+  DISCOVERED
+  SCRIPTED
+  UNDER_REVIEW
+  ASSIGNED
+  BID_SUBMITTED
+  VIEWED
+  MESSAGED
+  INTERVIEW
+  WON
+  IN_PROGRESS
+  COMPLETED
+  LOST
+  CANCELLED
 }
 
-enum AccountStatus {
-  ACTIVE
-  PAUSED
-  SUSPENDED
-  CLOSED
+enum PricingType {
+  HOURLY
+  FIXED
 }
 
-model FreelanceAccount {
-  id          String          @id @default(uuid())
-  platform    AccountPlatform
-  accountName String          @map("account_name")
-  profileUrl  String?         @map("profile_url")
-  status      AccountStatus   @default(ACTIVE)
+model Project {
+  id String @id @default(uuid())
 
-  agents Agent[]
+  // Job Discovery Fields
+  title          String
+  jobUrl         String?     @map("job_url")
+  jobDescription String?     @map("job_description")
+  pricingType    PricingType @map("pricing_type")
+  hourlyRateMin  Float?      @map("hourly_rate_min")
+  hourlyRateMax  Float?      @map("hourly_rate_max")
+  fixedPrice     Float?      @map("fixed_price")
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  // Pipeline Stage
+  stage ProjectStage @default(DISCOVERED)
 
-  @@map("freelance_accounts")
-}
+  // Script / Bid Materials
+  coverLetter    String?   @map("cover_letter")
+  videoScript    String?   @map("video_script")
+  upworkAccount  String?   @map("upwork_account")
+  bidAmount      Float?    @map("bid_amount")
+  bidSubmittedAt DateTime? @map("bid_submitted_at")
 
-model Agent {
-  id                 String           @id @default(uuid())
-  userId             String           @map("user_id")
-  user               User             @relation(fields: [userId], references: [id])
-  freelanceAccountId String           @map("freelance_account_id")
-  freelanceAccount   FreelanceAccount @relation(fields: [freelanceAccountId], references: [id])
-
-  isActive Boolean @default(true) @map("is_active")
-
-  proposals              Proposal[]
-  experimentAssignments  ExperimentAssignment[]
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@unique([userId, freelanceAccountId])
-  @@map("agents")
-}
-
-// -------------------------------------------------------
-// Clients
-// -------------------------------------------------------
-
-model Client {
-  id              String  @id @default(uuid())
-  marketplaceId   String? @map("marketplace_id")
-  name            String
-  company         String?
-  platform        AccountPlatform?
-  profileUrl      String? @map("profile_url")
-  country         String?
-  totalSpent      Float?  @map("total_spent")
-  hireRate        Float?  @map("hire_rate")
-  jobsPosted      Int?    @map("jobs_posted")
-
-  proposals Proposal[]
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@index([marketplaceId], map: "idx_clients_marketplace_id")
-  @@map("clients")
-}
-
-// -------------------------------------------------------
-// Scripts & Versions
-// -------------------------------------------------------
-
-model Script {
-  id        String @id @default(uuid())
-  name      String
-  category  String?
-
-  createdById String @map("created_by_id")
-  createdBy   User   @relation("ScriptCreator", fields: [createdById], references: [id])
+  // Org Scoping
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id])
 
   nicheId String? @map("niche_id")
   niche   Niche?  @relation(fields: [nicheId], references: [id])
 
-  versions ScriptVersion[]
+  teamId String? @map("team_id")
+  team   Team?   @relation(fields: [teamId], references: [id])
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  // Assignments
+  discoveredById String? @map("discovered_by_id")
+  discoveredBy   User?   @relation("ProjectDiscoveredBy", fields: [discoveredById], references: [id])
 
-  @@map("scripts")
-}
+  lastEditedById String? @map("last_edited_by_id")
+  lastEditedBy   User?   @relation("ProjectLastEditedBy", fields: [lastEditedById], references: [id])
 
-model ScriptVersion {
-  id       String @id @default(uuid())
-  scriptId String @map("script_id")
-  script   Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
-  content  String
-  version  Int
+  assignedCloserId String? @map("assigned_closer_id")
+  assignedCloser   User?   @relation("ProjectCloser", fields: [assignedCloserId], references: [id])
 
-  proposals Proposal[]
+  assignedPMId String? @map("assigned_pm_id")
+  assignedPM   User?   @relation("ProjectPM", fields: [assignedPMId], references: [id])
 
-  createdAt DateTime @default(now()) @map("created_at")
+  // Won Project Fields
+  clientName       String?   @map("client_name")
+  clientNotes      String?   @map("client_notes")
+  contractValue    Float?    @map("contract_value")
+  contractCurrency String    @default("USD") @map("contract_currency")
+  startDate        DateTime? @map("start_date")
+  endDate          DateTime? @map("end_date")
 
-  @@unique([scriptId, version])
-  @@map("script_versions")
-}
-
-// -------------------------------------------------------
-// Proposals
-// -------------------------------------------------------
-
-enum ProposalStatus {
-  DRAFT
-  SENT
-  VIEWED
-  REPLIED
-  INTERVIEW
-  HIRED
-  REJECTED
-  WITHDRAWN
-}
-
-model Proposal {
-  id              String         @id @default(uuid())
-  agentId         String         @map("agent_id")
-  agent           Agent          @relation(fields: [agentId], references: [id])
-  clientId        String         @map("client_id")
-  client          Client         @relation(fields: [clientId], references: [id])
-  scriptVersionId String?        @map("script_version_id")
-  scriptVersion   ScriptVersion? @relation(fields: [scriptVersionId], references: [id])
-
-  nicheId   String? @map("niche_id")
-  niche     Niche?  @relation(fields: [nicheId], references: [id])
-  closerId  String? @map("closer_id")
-  closer    User?   @relation("ProposalCloser", fields: [closerId], references: [id])
-  claimedAt DateTime? @map("claimed_at")
-
-  jobTitle    String?        @map("job_title")
-  jobUrl      String?        @map("job_url")
-  coverLetter String?        @map("cover_letter")
-  bidAmount   Float?         @map("bid_amount")
-  notes       String?
-  status      ProposalStatus @default(DRAFT)
-  sentAt      DateTime?      @map("sent_at")
-  replyAt     DateTime?      @map("reply_at")
-
-  videoProposal VideoProposal?
-  meeting       Meeting?
-  deal          Deal?
+  milestones            Milestone[]
+  tasks                 Task[]
+  meetings              Meeting[]
+  videoProposals        VideoProposal[]
   experimentAssignments ExperimentAssignment[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@index([agentId], map: "idx_proposals_agent")
-  @@index([status], map: "idx_proposals_status")
-  @@index([clientId], map: "idx_proposals_client")
-  @@index([nicheId], map: "idx_proposals_niche")
-  @@index([closerId], map: "idx_proposals_closer")
-  @@map("proposals")
-}
-
-// -------------------------------------------------------
-// Video Proposals
-// -------------------------------------------------------
-
-model VideoProposal {
-  id         String @id @default(uuid())
-  proposalId String @unique @map("proposal_id")
-  proposal   Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
-
-  videoUrl   String  @map("video_url")
-  storageKey String  @map("storage_key")
-  duration   Int? // seconds
-  fileSize   Int? @map("file_size") // bytes
-  mimeType   String? @map("mime_type")
-
-  thumbnailUrl String? @map("thumbnail_url")
-  viewCount    Int     @default(0) @map("view_count")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@map("video_proposals")
-}
-
-// -------------------------------------------------------
-// Meetings
-// -------------------------------------------------------
-
-enum MeetingStatus {
-  SCHEDULED
-  COMPLETED
-  CANCELLED
-  NO_SHOW
-}
-
-model Meeting {
-  id         String @id @default(uuid())
-  proposalId String @unique @map("proposal_id")
-  proposal   Proposal @relation(fields: [proposalId], references: [id])
-
-  closerId   String? @map("closer_id")
-  closer     User?   @relation("MeetingCloser", fields: [closerId], references: [id])
-
-  scheduledAt DateTime      @map("scheduled_at")
-  completedAt DateTime?     @map("completed_at")
-  status      MeetingStatus @default(SCHEDULED)
-  notes       String?
-  meetingUrl  String?       @map("meeting_url")
-  duration    Int? // minutes
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@map("meetings")
-}
-
-// -------------------------------------------------------
-// Deals
-// -------------------------------------------------------
-
-enum DealStatus {
-  NEGOTIATING
-  WON
-  LOST
-  CANCELLED
-}
-
-model Deal {
-  id         String @id @default(uuid())
-  proposalId String @unique @map("proposal_id")
-  proposal   Proposal @relation(fields: [proposalId], references: [id])
-
-  value    Float
-  currency String     @default("USD")
-  status   DealStatus @default(NEGOTIATING)
-  closedAt DateTime?  @map("closed_at")
-  notes    String?
-
-  project Project?
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@index([status], map: "idx_deals_status")
-  @@map("deals")
-}
-
-// -------------------------------------------------------
-// Projects
-// -------------------------------------------------------
-
-enum ProjectStatus {
-  NOT_STARTED
-  IN_PROGRESS
-  ON_HOLD
-  COMPLETED
-  CANCELLED
-}
-
-model Project {
-  id     String @id @default(uuid())
-  dealId String @unique @map("deal_id")
-  deal   Deal   @relation(fields: [dealId], references: [id])
-
-  name      String?
-  startDate DateTime?     @map("start_date")
-  endDate   DateTime?     @map("end_date")
-  status    ProjectStatus @default(NOT_STARTED)
-
-  milestones Milestone[]
-  tasks      Task[]
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
+  @@index([stage], map: "idx_projects_stage")
+  @@index([organizationId], map: "idx_projects_org")
+  @@index([nicheId], map: "idx_projects_niche")
+  @@index([teamId], map: "idx_projects_team")
+  @@index([assignedCloserId], map: "idx_projects_closer")
+  @@index([assignedPMId], map: "idx_projects_pm")
+  @@index([discoveredById], map: "idx_projects_discovered_by")
   @@map("projects")
 }
 
 model Milestone {
-  id        String @id @default(uuid())
-  projectId String @map("project_id")
+  id        String  @id @default(uuid())
+  projectId String  @map("project_id")
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   name      String
@@ -423,7 +261,73 @@ model Milestone {
 }
 
 // -------------------------------------------------------
-// Tasks
+// Video Proposals (attached to Project)
+// -------------------------------------------------------
+
+model VideoProposal {
+  id        String  @id @default(uuid())
+  projectId String  @map("project_id")
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  videoUrl   String  @map("video_url")
+  storageKey String  @map("storage_key")
+  duration   Int?
+  fileSize   Int?    @map("file_size")
+  mimeType   String? @map("mime_type")
+
+  thumbnailUrl String? @map("thumbnail_url")
+  viewCount    Int     @default(0) @map("view_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("video_proposals")
+}
+
+// -------------------------------------------------------
+// Meetings (attached to Project — lightweight links)
+// -------------------------------------------------------
+
+enum MeetingStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum MeetingType {
+  INTERVIEW
+  CLIENT_CHECKIN
+}
+
+model Meeting {
+  id        String  @id @default(uuid())
+  projectId String  @map("project_id")
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  closerId String? @map("closer_id")
+  closer   User?   @relation("MeetingCloser", fields: [closerId], references: [id])
+
+  type        MeetingType   @default(INTERVIEW)
+  scheduledAt DateTime      @map("scheduled_at")
+  completedAt DateTime?     @map("completed_at")
+  status      MeetingStatus @default(SCHEDULED)
+  notes       String?
+
+  meetingUrl String? @map("meeting_url")
+  fathomUrl  String? @map("fathom_url")
+  loomUrl    String? @map("loom_url")
+  driveUrl   String? @map("drive_url")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([projectId], map: "idx_meetings_project")
+  @@map("meetings")
+}
+
+// -------------------------------------------------------
+// Tasks (PM creates for Operators)
 // -------------------------------------------------------
 
 enum TaskStatus {
@@ -435,19 +339,19 @@ enum TaskStatus {
 }
 
 model Task {
-  id        String @id @default(uuid())
-  projectId String @map("project_id")
+  id        String  @id @default(uuid())
+  projectId String  @map("project_id")
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   assigneeId String? @map("assignee_id")
   assignee   User?   @relation("TaskAssignee", fields: [assigneeId], references: [id])
 
-  title       String
-  description String?
-  status      TaskStatus @default(TODO)
-  priority    Int        @default(0)
-  estimatedHours Float?  @map("estimated_hours")
-  completedAt DateTime?  @map("completed_at")
+  title          String
+  description    String?
+  status         TaskStatus @default(TODO)
+  priority       Int        @default(0)
+  estimatedHours Float?     @map("estimated_hours")
+  completedAt    DateTime?  @map("completed_at")
 
   qaReview QAReview?
 
@@ -480,7 +384,7 @@ model QAReview {
   reviewer   User   @relation("QAReviewer", fields: [reviewerId], references: [id])
 
   status   QAStatus @default(PENDING)
-  score    Int?     // 1-10
+  score    Int?
   comments String?
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -490,7 +394,7 @@ model QAReview {
 }
 
 // -------------------------------------------------------
-// Events (Universal Event Tracking)
+// Events (Universal Audit Log)
 // -------------------------------------------------------
 
 model Event {
@@ -502,19 +406,21 @@ model Event {
   actorId String? @map("actor_id")
   actor   User?   @relation("EventActor", fields: [actorId], references: [id])
 
-  metadata Json?
+  organizationId String? @map("organization_id")
+  metadata       Json?
 
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([eventType], map: "idx_events_type")
   @@index([entityType, entityId], map: "idx_events_entity")
   @@index([actorId], map: "idx_events_actor")
+  @@index([organizationId], map: "idx_events_org")
   @@index([createdAt], map: "idx_events_created_at")
   @@map("events")
 }
 
 // -------------------------------------------------------
-// Experiments (A/B Testing)
+// Experiments (A/B Testing — Template/Script Performance)
 // -------------------------------------------------------
 
 enum ExperimentStatus {
@@ -532,8 +438,8 @@ model Experiment {
   hypothesis  String?
   status      ExperimentStatus @default(DRAFT)
 
-  targetEntity String @map("target_entity") // e.g., "script", "video_style"
-  variants     Json   // JSON array of variant definitions
+  targetEntity String @map("target_entity")
+  variants     Json
 
   startDate DateTime? @map("start_date")
   endDate   DateTime? @map("end_date")
@@ -551,65 +457,16 @@ model ExperimentAssignment {
   experimentId String     @map("experiment_id")
   experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
 
-  agentId    String?   @map("agent_id")
-  agent      Agent?    @relation(fields: [agentId], references: [id])
-  proposalId String?   @map("proposal_id")
-  proposal   Proposal? @relation(fields: [proposalId], references: [id])
+  projectId String?  @map("project_id")
+  project   Project? @relation(fields: [projectId], references: [id])
 
-  variant  String
+  variant    String
+  outcome    String?
   assignedAt DateTime @default(now()) @map("assigned_at")
 
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([experimentId], map: "idx_experiment_assignments_experiment")
-  @@index([agentId], map: "idx_experiment_assignments_agent")
+  @@index([projectId], map: "idx_experiment_assignments_project")
   @@map("experiment_assignments")
-}
-
-// -------------------------------------------------------
-// Analytics (Materialized KPI Tables)
-// -------------------------------------------------------
-
-model DailyAgentMetric {
-  id      String   @id @default(uuid())
-  agentId String   @map("agent_id")
-  date    DateTime @db.Date
-
-  proposalsSent    Int @default(0) @map("proposals_sent")
-  proposalsViewed  Int @default(0) @map("proposals_viewed")
-  proposalsReplied Int @default(0) @map("proposals_replied")
-  meetingsBooked   Int @default(0) @map("meetings_booked")
-  dealsClosed      Int @default(0) @map("deals_closed")
-  totalDealValue   Float @default(0) @map("total_deal_value")
-  videosRecorded   Int @default(0) @map("videos_recorded")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@unique([agentId, date])
-  @@index([agentId], map: "idx_daily_agent_metrics_agent")
-  @@index([date], map: "idx_daily_agent_metrics_date")
-  @@map("daily_agent_metrics")
-}
-
-model DailyAccountMetric {
-  id        String   @id @default(uuid())
-  accountId String   @map("account_id")
-  date      DateTime @db.Date
-
-  proposalsSent    Int @default(0) @map("proposals_sent")
-  proposalsViewed  Int @default(0) @map("proposals_viewed")
-  proposalsReplied Int @default(0) @map("proposals_replied")
-  meetingsBooked   Int @default(0) @map("meetings_booked")
-  dealsClosed      Int @default(0) @map("deals_closed")
-  totalDealValue   Float @default(0) @map("total_deal_value")
-  conversionRate   Float @default(0) @map("conversion_rate")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@unique([accountId, date])
-  @@index([accountId], map: "idx_daily_account_metrics_account")
-  @@index([date], map: "idx_daily_account_metrics_date")
-  @@map("daily_account_metrics")
 }

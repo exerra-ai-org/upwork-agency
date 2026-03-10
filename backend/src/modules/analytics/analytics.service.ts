@@ -1,6 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
-import { DailyAgentMetric, DailyAccountMetric, DealStatus, ProposalStatus } from '@prisma/client';
+import { ProjectStage } from '@prisma/client';
+
+const WON_STAGES = [ProjectStage.WON, ProjectStage.IN_PROGRESS, ProjectStage.COMPLETED];
+
+const BID_SUBMITTED_STAGES = [
+  ProjectStage.BID_SUBMITTED,
+  ProjectStage.VIEWED,
+  ProjectStage.MESSAGED,
+  ProjectStage.INTERVIEW,
+  ProjectStage.WON,
+  ProjectStage.IN_PROGRESS,
+  ProjectStage.COMPLETED,
+  ProjectStage.LOST,
+];
 
 @Injectable()
 export class AnalyticsService {
@@ -8,151 +21,211 @@ export class AnalyticsService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async getAgentMetrics(
-    agentId: string,
-    startDate: Date,
-    endDate: Date,
-  ): Promise<DailyAgentMetric[]> {
-    return this.prisma.dailyAgentMetric.findMany({
-      where: {
-        agentId,
-        date: { gte: startDate, lte: endDate },
-      },
-      orderBy: { date: 'asc' },
-    });
-  }
-
-  async getAccountMetrics(
-    accountId: string,
-    startDate: Date,
-    endDate: Date,
-  ): Promise<DailyAccountMetric[]> {
-    return this.prisma.dailyAccountMetric.findMany({
-      where: {
-        accountId,
-        date: { gte: startDate, lte: endDate },
-      },
-      orderBy: { date: 'asc' },
-    });
-  }
-
+  /**
+   * Pipeline funnel counts filtered by an optional date range (based on createdAt).
+   */
   async getFunnelMetrics(
     startDate: Date,
     endDate: Date,
   ): Promise<{
-    proposalsSent: number;
-    proposalsViewed: number;
-    proposalsReplied: number;
-    meetingsBooked: number;
-    dealsClosed: number;
+    discovered: number;
+    scripted: number;
+    underReview: number;
+    assigned: number;
+    bidSubmitted: number;
+    viewed: number;
+    messaged: number;
+    interview: number;
+    won: number;
+    inProgress: number;
+    completed: number;
+    lost: number;
+    cancelled: number;
   }> {
-    const result = await this.prisma.dailyAgentMetric.aggregate({
-      where: {
-        date: { gte: startDate, lte: endDate },
-      },
-      _sum: {
-        proposalsSent: true,
-        proposalsViewed: true,
-        proposalsReplied: true,
-        meetingsBooked: true,
-        dealsClosed: true,
-      },
+    const dateFilter = { createdAt: { gte: startDate, lte: endDate } };
+
+    const stageCounts = await this.prisma.project.groupBy({
+      by: ['stage'],
+      where: dateFilter,
+      _count: { id: true },
     });
 
+    const byStage: Partial<Record<ProjectStage, number>> = {};
+    for (const row of stageCounts) {
+      byStage[row.stage] = row._count.id;
+    }
+
+    const get = (s: ProjectStage) => byStage[s] ?? 0;
+
     return {
-      proposalsSent: result._sum.proposalsSent ?? 0,
-      proposalsViewed: result._sum.proposalsViewed ?? 0,
-      proposalsReplied: result._sum.proposalsReplied ?? 0,
-      meetingsBooked: result._sum.meetingsBooked ?? 0,
-      dealsClosed: result._sum.dealsClosed ?? 0,
+      discovered: get(ProjectStage.DISCOVERED),
+      scripted: get(ProjectStage.SCRIPTED),
+      underReview: get(ProjectStage.UNDER_REVIEW),
+      assigned: get(ProjectStage.ASSIGNED),
+      bidSubmitted: get(ProjectStage.BID_SUBMITTED),
+      viewed: get(ProjectStage.VIEWED),
+      messaged: get(ProjectStage.MESSAGED),
+      interview: get(ProjectStage.INTERVIEW),
+      won: get(ProjectStage.WON),
+      inProgress: get(ProjectStage.IN_PROGRESS),
+      completed: get(ProjectStage.COMPLETED),
+      lost: get(ProjectStage.LOST),
+      cancelled: get(ProjectStage.CANCELLED),
     };
   }
 
-  async getTopAgents(
+  /**
+   * Top closers by win rate within the given date range.
+   */
+  async getTopClosers(
     startDate: Date,
     endDate: Date,
     limit: number,
   ): Promise<
     {
-      agentId: string;
-      totalDealValue: number;
-      dealsClosed: number;
-      proposalsSent: number;
+      closerId: string;
+      closerEmail: string;
+      totalBids: number;
+      totalWon: number;
+      totalRevenue: number;
+      winRate: number;
     }[]
   > {
-    const metrics = await this.prisma.dailyAgentMetric.groupBy({
-      by: ['agentId'],
-      where: {
-        date: { gte: startDate, lte: endDate },
-      },
-      _sum: {
-        totalDealValue: true,
-        dealsClosed: true,
-        proposalsSent: true,
-      },
-      orderBy: {
-        _sum: { totalDealValue: 'desc' },
-      },
-      take: limit,
+    const dateFilter = { createdAt: { gte: startDate, lte: endDate } };
+
+    const closers = await this.prisma.user.findMany({
+      where: { role: { name: 'closer' } },
+      select: { id: true, email: true },
     });
 
-    return metrics.map((m) => ({
-      agentId: m.agentId,
-      totalDealValue: m._sum.totalDealValue ?? 0,
-      dealsClosed: m._sum.dealsClosed ?? 0,
-      proposalsSent: m._sum.proposalsSent ?? 0,
-    }));
-  }
+    const results = await Promise.all(
+      closers.map(async (closer) => {
+        const [totalBids, totalWon, revenueAgg] = await Promise.all([
+          this.prisma.project.count({
+            where: {
+              assignedCloserId: closer.id,
+              stage: { in: BID_SUBMITTED_STAGES },
+              ...dateFilter,
+            },
+          }),
+          this.prisma.project.count({
+            where: { assignedCloserId: closer.id, stage: { in: WON_STAGES }, ...dateFilter },
+          }),
+          this.prisma.project.aggregate({
+            where: { assignedCloserId: closer.id, stage: { in: WON_STAGES }, ...dateFilter },
+            _sum: { contractValue: true },
+          }),
+        ]);
 
-  async getDashboardSummary(): Promise<{
-    totalProposals: number;
-    totalMeetings: number;
-    totalDeals: number;
-    totalRevenue: number;
-    conversionRates: {
-      viewRate: number;
-      replyRate: number;
-      meetingRate: number;
-      dealRate: number;
-    };
-  }> {
-    const [totalProposals, totalMeetings, totalDeals, revenueAgg, statusCounts] = await Promise.all(
-      [
-        this.prisma.proposal.count(),
-        this.prisma.meeting.count(),
-        this.prisma.deal.count({ where: { status: DealStatus.WON } }),
-        this.prisma.deal.aggregate({
-          where: { status: DealStatus.WON },
-          _sum: { value: true },
-        }),
-        this.prisma.proposal.groupBy({
-          by: ['status'],
-          _count: { status: true },
-        }),
-      ],
+        return {
+          closerId: closer.id,
+          closerEmail: closer.email,
+          totalBids,
+          totalWon,
+          totalRevenue: revenueAgg._sum.contractValue ?? 0,
+          winRate: totalBids > 0 ? totalWon / totalBids : 0,
+        };
+      }),
     );
 
-    const countByStatus: Record<string, number> = {};
-    for (const entry of statusCounts) {
-      countByStatus[entry.status] = entry._count.status;
+    return results.sort((a, b) => b.totalRevenue - a.totalRevenue).slice(0, limit);
+  }
+
+  /**
+   * Overall dashboard summary — all-time counts + conversion rates.
+   */
+  async getDashboardSummary(): Promise<{
+    totalProjects: number;
+    totalMeetings: number;
+    totalWon: number;
+    totalRevenue: number;
+    conversionRates: {
+      bidRate: number;
+      viewRate: number;
+      interviewRate: number;
+      winRate: number;
+    };
+  }> {
+    const [totalProjects, totalMeetings, stageCounts, revenueAgg] = await Promise.all([
+      this.prisma.project.count(),
+      this.prisma.meeting.count(),
+      this.prisma.project.groupBy({
+        by: ['stage'],
+        _count: { id: true },
+      }),
+      this.prisma.project.aggregate({
+        where: { stage: { in: WON_STAGES } },
+        _sum: { contractValue: true },
+      }),
+    ]);
+
+    const byStage: Partial<Record<ProjectStage, number>> = {};
+    for (const row of stageCounts) {
+      byStage[row.stage] = row._count.id;
     }
 
-    const sent = totalProposals;
-    const viewed = countByStatus[ProposalStatus.VIEWED] ?? 0;
-    const replied = countByStatus[ProposalStatus.REPLIED] ?? 0;
-    const interviewed = countByStatus[ProposalStatus.INTERVIEW] ?? 0;
+    const get = (s: ProjectStage) => byStage[s] ?? 0;
+
+    const totalBidSubmitted = BID_SUBMITTED_STAGES.reduce((sum, s) => sum + get(s), 0);
+    const totalViewed =
+      get(ProjectStage.VIEWED) +
+      get(ProjectStage.MESSAGED) +
+      get(ProjectStage.INTERVIEW) +
+      get(ProjectStage.WON) +
+      get(ProjectStage.IN_PROGRESS) +
+      get(ProjectStage.COMPLETED);
+    const totalInterview =
+      get(ProjectStage.INTERVIEW) +
+      get(ProjectStage.WON) +
+      get(ProjectStage.IN_PROGRESS) +
+      get(ProjectStage.COMPLETED);
+    const totalWon = WON_STAGES.reduce((sum, s) => sum + get(s), 0);
 
     return {
-      totalProposals,
+      totalProjects,
       totalMeetings,
-      totalDeals,
-      totalRevenue: revenueAgg._sum.value ?? 0,
+      totalWon,
+      totalRevenue: revenueAgg._sum.contractValue ?? 0,
       conversionRates: {
-        viewRate: sent > 0 ? viewed / sent : 0,
-        replyRate: sent > 0 ? replied / sent : 0,
-        meetingRate: sent > 0 ? interviewed / sent : 0,
-        dealRate: sent > 0 ? totalDeals / sent : 0,
+        bidRate: totalProjects > 0 ? totalBidSubmitted / totalProjects : 0,
+        viewRate: totalBidSubmitted > 0 ? totalViewed / totalBidSubmitted : 0,
+        interviewRate: totalViewed > 0 ? totalInterview / totalViewed : 0,
+        winRate: totalBidSubmitted > 0 ? totalWon / totalBidSubmitted : 0,
       },
+    };
+  }
+
+  /**
+   * Per-org pipeline summary.
+   */
+  async getOrgSummary(organizationId: string): Promise<{
+    totalProjects: number;
+    activeProjects: number;
+    wonProjects: number;
+    totalRevenue: number;
+  }> {
+    const [totalProjects, activeProjects, wonProjects, revenueAgg] = await Promise.all([
+      this.prisma.project.count({ where: { organizationId } }),
+      this.prisma.project.count({
+        where: {
+          organizationId,
+          stage: { notIn: [ProjectStage.COMPLETED, ProjectStage.LOST, ProjectStage.CANCELLED] },
+        },
+      }),
+      this.prisma.project.count({
+        where: { organizationId, stage: { in: WON_STAGES } },
+      }),
+      this.prisma.project.aggregate({
+        where: { organizationId, stage: { in: WON_STAGES } },
+        _sum: { contractValue: true },
+      }),
+    ]);
+
+    return {
+      totalProjects,
+      activeProjects,
+      wonProjects,
+      totalRevenue: revenueAgg._sum.contractValue ?? 0,
     };
   }
 }

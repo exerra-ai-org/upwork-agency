@@ -24,31 +24,18 @@ export class AnalyticsController {
     );
   }
 
-  @Get('agents/:agentId')
-  getAgentMetrics(@Param('agentId') agentId: string, @Query() query: DateRangeDto) {
-    return this.analyticsService.getAgentMetrics(
-      agentId,
-      new Date(query.startDate),
-      new Date(query.endDate),
-    );
-  }
-
-  @Get('accounts/:accountId')
-  getAccountMetrics(@Param('accountId') accountId: string, @Query() query: DateRangeDto) {
-    return this.analyticsService.getAccountMetrics(
-      accountId,
-      new Date(query.startDate),
-      new Date(query.endDate),
-    );
-  }
-
-  @Get('top-agents')
+  @Get('top-closers')
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
-  getTopAgents(@Query() query: DateRangeDto, @Query('limit') limit?: string) {
-    return this.analyticsService.getTopAgents(
+  getTopClosers(@Query() query: DateRangeDto, @Query('limit') limit?: string) {
+    return this.analyticsService.getTopClosers(
       new Date(query.startDate),
       new Date(query.endDate),
       limit ? parseInt(limit, 10) : 10,
     );
+  }
+
+  @Get('orgs/:organizationId')
+  getOrgSummary(@Param('organizationId') organizationId: string) {
+    return this.analyticsService.getOrgSummary(organizationId);
   }
 }

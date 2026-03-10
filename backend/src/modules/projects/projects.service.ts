@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
 import { PaginationDto, PaginatedResult } from '@/common/dto';
 import { CreateProjectDto, UpdateProjectDto } from './dto';
-import { Project, ProjectStatus } from '@prisma/client';
+import { Project, ProjectStage } from '@prisma/client';
 
 @Injectable()
 export class ProjectsService {
@@ -16,12 +16,16 @@ export class ProjectsService {
 
   async findAll(
     pagination: PaginationDto,
-    filters?: { status?: ProjectStatus },
+    filters?: { stage?: ProjectStage; organizationId?: string },
   ): Promise<PaginatedResult<Project>> {
     const where: Record<string, unknown> = {};
 
-    if (filters?.status) {
-      where.status = filters.status;
+    if (filters?.stage) {
+      where.stage = filters.stage;
+    }
+
+    if (filters?.organizationId) {
+      where.organizationId = filters.organizationId;
     }
 
     const [data, total] = await Promise.all([
@@ -29,7 +33,14 @@ export class ProjectsService {
         where,
         skip: pagination.skip,
         take: pagination.take,
-        include: { deal: true },
+        include: {
+          niche: true,
+          team: true,
+          organization: true,
+          discoveredBy: { select: { id: true, email: true, firstName: true, lastName: true } },
+          assignedCloser: { select: { id: true, email: true, firstName: true, lastName: true } },
+          assignedPM: { select: { id: true, email: true, firstName: true, lastName: true } },
+        },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.project.count({ where }),
@@ -42,9 +53,17 @@ export class ProjectsService {
     const project = await this.prisma.project.findUnique({
       where: { id },
       include: {
-        deal: true,
-        milestones: true,
-        tasks: true,
+        niche: true,
+        team: true,
+        organization: true,
+        discoveredBy: { select: { id: true, email: true, firstName: true, lastName: true } },
+        lastEditedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
+        assignedCloser: { select: { id: true, email: true, firstName: true, lastName: true } },
+        assignedPM: { select: { id: true, email: true, firstName: true, lastName: true } },
+        milestones: { orderBy: { createdAt: 'asc' } },
+        tasks: { orderBy: { createdAt: 'desc' } },
+        meetings: { orderBy: { scheduledAt: 'asc' } },
+        videoProposals: { orderBy: { createdAt: 'desc' } },
       },
     });
 
@@ -61,6 +80,15 @@ export class ProjectsService {
     return this.prisma.project.update({
       where: { id },
       data: dto,
+    });
+  }
+
+  async updateStage(id: string, stage: ProjectStage): Promise<Project> {
+    await this.findById(id);
+
+    return this.prisma.project.update({
+      where: { id },
+      data: { stage },
     });
   }
 }

@@ -11,19 +11,33 @@ export class VideoService {
 
   async create(dto: CreateVideoProposalDto): Promise<VideoProposal> {
     return this.prisma.videoProposal.create({
-      data: dto,
+      data: {
+        projectId: dto.projectId,
+        videoUrl: dto.videoUrl,
+        storageKey: dto.storageKey,
+        duration: dto.duration,
+        fileSize: dto.fileSize,
+        mimeType: dto.mimeType,
+        thumbnailUrl: dto.thumbnailUrl,
+      },
     });
   }
 
-  async findAll(pagination: PaginationDto): Promise<PaginatedResult<VideoProposal>> {
+  async findAll(
+    pagination: PaginationDto,
+    projectId?: string,
+  ): Promise<PaginatedResult<VideoProposal>> {
+    const where = projectId ? { projectId } : {};
+
     const [data, total] = await Promise.all([
       this.prisma.videoProposal.findMany({
+        where,
         skip: pagination.skip,
         take: pagination.take,
         orderBy: { createdAt: 'desc' },
-        include: { proposal: true },
+        include: { project: true },
       }),
-      this.prisma.videoProposal.count(),
+      this.prisma.videoProposal.count({ where }),
     ]);
 
     return new PaginatedResult(data, total, pagination.page ?? 1, pagination.limit ?? 20);
@@ -32,7 +46,7 @@ export class VideoService {
   async findById(id: string): Promise<VideoProposal> {
     const video = await this.prisma.videoProposal.findUnique({
       where: { id },
-      include: { proposal: true },
+      include: { project: true },
     });
 
     if (!video) {
@@ -42,57 +56,33 @@ export class VideoService {
     return video;
   }
 
-  async findByProposalId(proposalId: string): Promise<VideoProposal> {
-    const video = await this.prisma.videoProposal.findUnique({
-      where: { proposalId },
-      include: { proposal: true },
+  async findByProjectId(projectId: string): Promise<VideoProposal[]> {
+    return this.prisma.videoProposal.findMany({
+      where: { projectId },
+      include: { project: true },
+      orderBy: { createdAt: 'desc' },
     });
-
-    if (!video) {
-      throw new NotFoundException(`VideoProposal for proposal "${proposalId}" not found`);
-    }
-
-    return video;
   }
 
   async incrementViewCount(id: string): Promise<VideoProposal> {
-    const video = await this.prisma.videoProposal.findUnique({
-      where: { id },
-    });
-
-    if (!video) {
-      throw new NotFoundException(`VideoProposal with id "${id}" not found`);
-    }
+    await this.findById(id);
 
     return this.prisma.videoProposal.update({
       where: { id },
-      data: {
-        viewCount: { increment: 1 },
-      },
+      data: { viewCount: { increment: 1 } },
     });
   }
 
   async delete(id: string): Promise<VideoProposal> {
-    const video = await this.prisma.videoProposal.findUnique({
-      where: { id },
-    });
+    await this.findById(id);
 
-    if (!video) {
-      throw new NotFoundException(`VideoProposal with id "${id}" not found`);
-    }
-
-    return this.prisma.videoProposal.delete({
-      where: { id },
-    });
+    return this.prisma.videoProposal.delete({ where: { id } });
   }
 
   getUploadUrl(fileName: string): { storageKey: string; uploadUrl: string } {
     const key = `videos/${randomUUID()}/${fileName}`;
     const uploadUrl = `https://s3.amazonaws.com/your-bucket/${key}?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=3600`;
 
-    return {
-      storageKey: key,
-      uploadUrl,
-    };
+    return { storageKey: key, uploadUrl };
   }
 }

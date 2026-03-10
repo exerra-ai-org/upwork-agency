@@ -5,14 +5,9 @@ import { JwtModule } from '@nestjs/jwt';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { IdentityModule } from './modules/identity/identity.module';
-import { AccountsModule } from './modules/accounts/accounts.module';
-import { ClientsModule } from './modules/clients/clients.module';
 import { NichesModule } from './modules/niches/niches.module';
-import { ProposalsModule } from './modules/proposals/proposals.module';
-import { ScriptsModule } from './modules/scripts/scripts.module';
 import { VideoModule } from './modules/video/video.module';
 import { MeetingsModule } from './modules/meetings/meetings.module';
-import { DealsModule } from './modules/deals/deals.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { QAModule } from './modules/qa/qa.module';
@@ -41,14 +36,9 @@ import { JwtAuthGuard, RolesGuard } from './common/guards';
     ScheduleModule.forRoot(),
     PrismaModule,
     IdentityModule,
-    AccountsModule,
-    ClientsModule,
     NichesModule,
-    ProposalsModule,
-    ScriptsModule,
     VideoModule,
     MeetingsModule,
-    DealsModule,
     ProjectsModule,
     TasksModule,
     QAModule,

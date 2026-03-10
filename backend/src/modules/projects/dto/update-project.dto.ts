@@ -1,25 +1,120 @@
-import { IsOptional, IsString, IsDateString, IsEnum } from 'class-validator';
+import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { ProjectStatus } from '@prisma/client';
+import { ProjectStage, PricingType } from '@prisma/client';
 
 export class UpdateProjectDto {
-  @ApiPropertyOptional({ example: 'Website Redesign v2' })
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  name?: string;
+  title?: string;
 
-  @ApiPropertyOptional({ example: '2026-04-01T00:00:00.000Z' })
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  jobUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  jobDescription?: string;
+
+  @ApiPropertyOptional({ enum: PricingType })
+  @IsOptional()
+  @IsEnum(PricingType)
+  pricingType?: PricingType;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  hourlyRateMin?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  hourlyRateMax?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fixedPrice?: number;
+
+  @ApiPropertyOptional({ enum: ProjectStage })
+  @IsOptional()
+  @IsEnum(ProjectStage)
+  stage?: ProjectStage;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  coverLetter?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  videoScript?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  upworkAccount?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  bidAmount?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  nicheId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  teamId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  lastEditedById?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  assignedCloserId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  assignedPMId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  clientName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  clientNotes?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  contractValue?: number;
+
+  @ApiPropertyOptional()
   @IsOptional()
   @IsDateString()
-  startDate?: Date;
+  startDate?: string;
 
-  @ApiPropertyOptional({ example: '2026-06-30T00:00:00.000Z' })
+  @ApiPropertyOptional()
   @IsOptional()
   @IsDateString()
-  endDate?: Date;
-
-  @ApiPropertyOptional({ enum: ProjectStatus, example: ProjectStatus.IN_PROGRESS })
-  @IsOptional()
-  @IsEnum(ProjectStatus)
-  status?: ProjectStatus;
+  endDate?: string;
 }

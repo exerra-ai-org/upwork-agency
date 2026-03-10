@@ -1,23 +1,71 @@
-import { IsOptional, IsString, IsUUID, IsDateString } from 'class-validator';
+import {
+  IsEnum,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  IsUrl,
+  Min,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { PricingType } from '@prisma/client';
 
 export class CreateProjectDto {
-  @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
-  @IsUUID()
-  dealId: string;
+  @ApiProperty({ example: 'Build AI Chatbot for Customer Support' })
+  @IsString()
+  @IsNotEmpty()
+  title: string;
 
-  @ApiPropertyOptional({ example: 'Website Redesign' })
+  @ApiPropertyOptional({ example: 'https://www.upwork.com/jobs/~01abc123' })
   @IsOptional()
   @IsString()
-  name?: string;
+  jobUrl?: string;
 
-  @ApiPropertyOptional({ example: '2026-04-01T00:00:00.000Z' })
+  @ApiPropertyOptional()
   @IsOptional()
-  @IsDateString()
-  startDate?: Date;
+  @IsString()
+  jobDescription?: string;
 
-  @ApiPropertyOptional({ example: '2026-06-30T00:00:00.000Z' })
+  @ApiProperty({ enum: PricingType })
+  @IsEnum(PricingType)
+  pricingType: PricingType;
+
+  @ApiPropertyOptional({ example: 50 })
   @IsOptional()
-  @IsDateString()
-  endDate?: Date;
+  @IsNumber()
+  @Min(0)
+  hourlyRateMin?: number;
+
+  @ApiPropertyOptional({ example: 80 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  hourlyRateMax?: number;
+
+  @ApiPropertyOptional({ example: 5000 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fixedPrice?: number;
+
+  @ApiProperty({ example: 'org-uuid-here' })
+  @IsUUID()
+  @IsNotEmpty()
+  organizationId: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  nicheId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  teamId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  discoveredById?: string;
 }

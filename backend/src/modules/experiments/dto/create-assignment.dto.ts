@@ -1,16 +1,11 @@
 import { IsOptional, IsString, IsUUID } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
 
 export class CreateAssignmentDto {
-  @ApiPropertyOptional({ example: 'clxyz123-agent-id' })
+  @ApiPropertyOptional({ example: 'clxyz123-project-id' })
   @IsOptional()
   @IsUUID()
-  agentId?: string;
-
-  @ApiPropertyOptional({ example: 'clxyz123-proposal-id' })
-  @IsOptional()
-  @IsUUID()
-  proposalId?: string;
+  projectId?: string;
 
   @ApiProperty({ example: 'variant_a' })
   @IsString()

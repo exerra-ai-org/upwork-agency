@@ -103,8 +103,7 @@ export class ExperimentsService {
     return this.prisma.experimentAssignment.create({
       data: {
         experimentId,
-        agentId: dto.agentId,
-        proposalId: dto.proposalId,
+        projectId: dto.projectId,
         variant: dto.variant,
       },
     });

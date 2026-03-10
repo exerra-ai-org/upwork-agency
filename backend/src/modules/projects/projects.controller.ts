@@ -4,7 +4,7 @@ import { JwtAuthGuard } from '@/common/guards';
 import { PaginationDto } from '@/common/dto';
 import { ProjectsService } from './projects.service';
 import { CreateProjectDto, UpdateProjectDto } from './dto';
-import { ProjectStatus } from '@prisma/client';
+import { ProjectStage } from '@prisma/client';
 
 @ApiTags('Projects')
 @ApiBearerAuth()
@@ -19,9 +19,14 @@ export class ProjectsController {
   }
 
   @Get()
-  @ApiQuery({ name: 'status', enum: ProjectStatus, required: false })
-  findAll(@Query() pagination: PaginationDto, @Query('status') status?: ProjectStatus) {
-    return this.projectsService.findAll(pagination, { status });
+  @ApiQuery({ name: 'stage', enum: ProjectStage, required: false })
+  @ApiQuery({ name: 'organizationId', required: false })
+  findAll(
+    @Query() pagination: PaginationDto,
+    @Query('stage') stage?: ProjectStage,
+    @Query('organizationId') organizationId?: string,
+  ) {
+    return this.projectsService.findAll(pagination, { stage, organizationId });
   }
 
   @Get(':id')
@@ -32,5 +37,10 @@ export class ProjectsController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateProjectDto) {
     return this.projectsService.update(id, dto);
+  }
+
+  @Patch(':id/stage')
+  updateStage(@Param('id') id: string, @Body('stage') stage: ProjectStage) {
+    return this.projectsService.updateStage(id, stage);
   }
 }

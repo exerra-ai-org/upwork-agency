@@ -1,19 +1,18 @@
 'use client';
 
-import { useState } from 'react';
-import {
-  useProjects,
-  useCreateProject,
-  usePipelineCounts,
-  useAdvanceStage,
-  useAssignProject,
-} from '@/hooks/use-projects';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useProjects, useCreateProject, usePipelineCounts } from '@/hooks/use-projects';
 import { useNiches } from '@/hooks/use-niches';
 import { useUsers } from '@/hooks/use-users';
 import { useAuthContext } from '@/components/auth-provider';
+import {
+  ProjectDetailSheet,
+  STAGE_LABELS,
+  STAGE_VARIANT,
+} from '@/components/projects/project-detail-sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -42,43 +41,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, ChevronRight, UserPlus } from 'lucide-react';
+import { Plus, ChevronRight } from 'lucide-react';
 import { ProjectStage, PricingType } from '@/types';
-
-const STAGE_LABELS: Record<string, string> = {
-  [ProjectStage.DISCOVERED]: 'Discovered',
-  [ProjectStage.SCRIPTED]: 'Scripted',
-  [ProjectStage.UNDER_REVIEW]: 'Under Review',
-  [ProjectStage.ASSIGNED]: 'Assigned',
-  [ProjectStage.BID_SUBMITTED]: 'Bid Submitted',
-  [ProjectStage.VIEWED]: 'Viewed',
-  [ProjectStage.MESSAGED]: 'Messaged',
-  [ProjectStage.INTERVIEW]: 'Interview',
-  [ProjectStage.WON]: 'Won',
-  [ProjectStage.IN_PROGRESS]: 'In Progress',
-  [ProjectStage.COMPLETED]: 'Completed',
-  [ProjectStage.LOST]: 'Lost',
-  [ProjectStage.CANCELLED]: 'Cancelled',
-};
-
-const STAGE_VARIANT: Record<
-  string,
-  'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning'
-> = {
-  DISCOVERED: 'secondary',
-  SCRIPTED: 'default',
-  UNDER_REVIEW: 'warning',
-  ASSIGNED: 'outline',
-  BID_SUBMITTED: 'warning',
-  VIEWED: 'default',
-  MESSAGED: 'default',
-  INTERVIEW: 'default',
-  WON: 'success',
-  IN_PROGRESS: 'success',
-  COMPLETED: 'success',
-  LOST: 'destructive',
-  CANCELLED: 'secondary',
-};
 
 const STAGE_OPTIONS = [
   { label: 'All Stages', value: 'all' },
@@ -88,14 +52,26 @@ const STAGE_OPTIONS = [
   })),
 ];
 
+// Roles that cannot view the projects page at all
+const BLOCKED_ROLES = ['operator', 'qa'];
+
 export default function ProjectsPage() {
-  const { activeOrganizationId } = useAuthContext();
+  const router = useRouter();
+  const { user, activeOrganizationId } = useAuthContext();
+  const role = user?.role?.toLowerCase() ?? '';
+
+  // Redirect operators/qa away
+  useEffect(() => {
+    if (role && BLOCKED_ROLES.includes(role)) {
+      router.replace('/tasks');
+    }
+  }, [role, router]);
+
   const [page, setPage] = useState(1);
   const [stageFilter, setStageFilter] = useState('all');
   const [createOpen, setCreateOpen] = useState(false);
-  const [assignOpen, setAssignOpen] = useState(false);
-  const [assigningProjectId, setAssigningProjectId] = useState('');
-  const limit = 10;
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const limit = 25;
 
   const { data, isLoading, isError, error } = useProjects({
     page,
@@ -106,12 +82,8 @@ export default function ProjectsPage() {
 
   const { data: pipelineCounts } = usePipelineCounts(activeOrganizationId ?? undefined);
   const createProject = useCreateProject();
-  const advanceStage = useAdvanceStage();
-  const assignProject = useAssignProject();
   const { data: niches } = useNiches(activeOrganizationId ?? undefined);
   const { data: usersData } = useUsers({ limit: 100 });
-  const closers = usersData?.data.filter((u) => u.role?.name === 'closer') ?? [];
-  const pms = usersData?.data.filter((u) => u.role?.name === 'project_manager') ?? [];
 
   const [form, setForm] = useState({
     title: '',
@@ -122,11 +94,6 @@ export default function ProjectsPage() {
     hourlyRateMax: '',
     fixedPrice: '',
     nicheId: '',
-  });
-
-  const [assignForm, setAssignForm] = useState({
-    assignedCloserId: '',
-    assignedPMId: '',
   });
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -142,6 +109,7 @@ export default function ProjectsPage() {
       hourlyRateMax: form.hourlyRateMax ? parseFloat(form.hourlyRateMax) : undefined,
       fixedPrice: form.fixedPrice ? parseFloat(form.fixedPrice) : undefined,
       nicheId: form.nicheId && form.nicheId !== 'none' ? form.nicheId : undefined,
+      discoveredById: user?.id,
     });
     setForm({
       title: '',
@@ -156,40 +124,23 @@ export default function ProjectsPage() {
     setCreateOpen(false);
   };
 
-  const openAssign = (projectId: string) => {
-    setAssigningProjectId(projectId);
-    setAssignForm({ assignedCloserId: '', assignedPMId: '' });
-    setAssignOpen(true);
-  };
-
-  const handleAssign = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await assignProject.mutateAsync({
-      id: assigningProjectId,
-      assignedCloserId:
-        assignForm.assignedCloserId && assignForm.assignedCloserId !== 'none'
-          ? assignForm.assignedCloserId
-          : undefined,
-      assignedPMId:
-        assignForm.assignedPMId && assignForm.assignedPMId !== 'none'
-          ? assignForm.assignedPMId
-          : undefined,
-    });
-    setAssignOpen(false);
-  };
-
-  const userName = (u?: { firstName?: string; lastName?: string; email: string }) => {
-    if (!u) return '---';
+  const formatUserName = (
+    u?: { firstName?: string | null; lastName?: string | null; email: string } | null,
+  ) => {
+    if (!u) return '—';
     const name = [u.firstName, u.lastName].filter(Boolean).join(' ');
     return name || u.email;
   };
 
+  if (BLOCKED_ROLES.includes(role)) return null;
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col h-[calc(100vh-4rem)] gap-4 p-6 overflow-hidden">
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
-          <p className="text-muted-foreground">Full pipeline: Discovery to Delivery</p>
+          <p className="text-muted-foreground text-sm">Full pipeline: Discovery to Delivery</p>
         </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
@@ -318,87 +269,45 @@ export default function ProjectsPage() {
         </Dialog>
       </div>
 
-      {/* Assign Dialog */}
-      <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
-        <DialogContent>
-          <form onSubmit={handleAssign}>
-            <DialogHeader>
-              <DialogTitle>Assign Project</DialogTitle>
-              <DialogDescription>Assign a closer and/or project manager.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label>Closer</Label>
-                <Select
-                  value={assignForm.assignedCloserId}
-                  onValueChange={(v) => setAssignForm((p) => ({ ...p, assignedCloserId: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select closer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {closers.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {userName(u)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Project Manager</Label>
-                <Select
-                  value={assignForm.assignedPMId}
-                  onValueChange={(v) => setAssignForm((p) => ({ ...p, assignedPMId: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select PM" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {pms.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {userName(u)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="submit" disabled={assignProject.isPending}>
-                {assignProject.isPending ? 'Assigning...' : 'Assign'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Pipeline summary counts */}
+      {/* ── Pipeline pills ──────────────────────────────────────────────── */}
       {pipelineCounts && pipelineCounts.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {pipelineCounts.map(({ stage, count }) => (
-            <button
-              key={stage}
-              onClick={() => {
-                setStageFilter(stageFilter === stage ? 'all' : stage);
-                setPage(1);
-              }}
-              className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
-                stageFilter === stage
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'hover:bg-accent'
-              }`}
-            >
-              {STAGE_LABELS[stage] ?? stage}: {count}
-            </button>
-          ))}
+        <div className="flex flex-wrap gap-1.5 shrink-0">
+          <button
+            onClick={() => {
+              setStageFilter('all');
+              setPage(1);
+            }}
+            className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+              stageFilter === 'all'
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'hover:bg-accent'
+            }`}
+          >
+            All
+          </button>
+          {pipelineCounts
+            .filter(({ count }) => count > 0)
+            .map(({ stage, count }) => (
+              <button
+                key={stage}
+                onClick={() => {
+                  setStageFilter(stageFilter === stage ? 'all' : stage);
+                  setPage(1);
+                }}
+                className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                  stageFilter === stage
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'hover:bg-accent'
+                }`}
+              >
+                {STAGE_LABELS[stage] ?? stage}: {count}
+              </button>
+            ))}
         </div>
       )}
 
-      {/* Filter bar */}
-      <div className="flex items-center gap-4">
+      {/* ── Filter bar ─────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-3 shrink-0">
         <Select
           value={stageFilter}
           onValueChange={(v) => {
@@ -406,7 +315,7 @@ export default function ProjectsPage() {
             setPage(1);
           }}
         >
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger className="w-[180px] h-8">
             <SelectValue placeholder="Filter by stage" />
           </SelectTrigger>
           <SelectContent>
@@ -418,36 +327,34 @@ export default function ProjectsPage() {
           </SelectContent>
         </Select>
         <span className="text-sm text-muted-foreground">
-          {data ? `${data.meta.total} projects` : 'Loading...'}
+          {data ? `${data.meta.total} project${data.meta.total !== 1 ? 's' : ''}` : '—'}
         </span>
+        <span className="text-xs text-muted-foreground ml-auto">Click any row to open details</span>
       </div>
 
-      {/* Projects Table */}
-      <Card>
-        <CardHeader className="sr-only">
-          <CardTitle>Projects Table</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
+      {/* ── Table (fills remaining height) ─────────────────────────────── */}
+      <div className="flex-1 rounded-lg border overflow-hidden flex flex-col min-h-0">
+        <div className="overflow-y-auto flex-1">
           <Table>
-            <TableHeader>
+            <TableHeader className="sticky top-0 bg-card z-10">
               <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Stage</TableHead>
-                <TableHead>Org</TableHead>
-                <TableHead>Niche</TableHead>
-                <TableHead>Closer</TableHead>
-                <TableHead>Bid Amount</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="w-[140px]" />
+                <TableHead className="w-[280px]">Title</TableHead>
+                <TableHead className="w-[130px]">Stage</TableHead>
+                <TableHead className="w-[110px]">Niche</TableHead>
+                <TableHead className="w-[140px]">Discovered By</TableHead>
+                <TableHead className="w-[140px]">Closer</TableHead>
+                <TableHead className="w-[110px]">Bid Amount</TableHead>
+                <TableHead className="w-[100px]">Created</TableHead>
+                <TableHead className="w-[40px]" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading &&
-                Array.from({ length: 5 }).map((_, i) => (
+                Array.from({ length: 8 }).map((_, i) => (
                   <TableRow key={i}>
                     {Array.from({ length: 8 }).map((_, j) => (
                       <TableCell key={j}>
-                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-4 w-full" />
                       </TableCell>
                     ))}
                   </TableRow>
@@ -455,103 +362,114 @@ export default function ProjectsPage() {
 
               {isError && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12 text-destructive">
+                  <TableCell colSpan={8} className="text-center py-16 text-destructive">
                     Failed to load projects. {(error as Error)?.message || 'Unknown error'}
                   </TableCell>
                 </TableRow>
               )}
 
               {data?.data.map((project) => (
-                <TableRow key={project.id}>
-                  <TableCell className="font-medium max-w-[250px] truncate">
-                    {project.title}
+                <TableRow
+                  key={project.id}
+                  className="cursor-pointer hover:bg-accent/50 transition-colors"
+                  onClick={() => setSelectedProjectId(project.id)}
+                >
+                  <TableCell>
+                    <div className="font-medium leading-tight truncate max-w-[260px]">
+                      {project.title}
+                    </div>
+                    {project.niche && (
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {project.organization?.name}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={STAGE_VARIANT[project.stage] || 'secondary'}>
-                      {STAGE_LABELS[project.stage] ?? project.stage.replace(/_/g, ' ')}
+                    <Badge
+                      variant={STAGE_VARIANT[project.stage] ?? 'secondary'}
+                      className="text-xs whitespace-nowrap"
+                    >
+                      {STAGE_LABELS[project.stage] ?? project.stage}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {project.organization?.name ?? '---'}
+                  <TableCell className="text-sm text-muted-foreground">
+                    {project.niche?.name ?? '—'}
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {project.niche?.name ?? '---'}
+                  <TableCell className="text-sm text-muted-foreground truncate max-w-[130px]">
+                    {formatUserName(project.discoveredBy)}
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {userName(project.assignedCloser)}
+                  <TableCell className="text-sm text-muted-foreground truncate max-w-[130px]">
+                    {formatUserName(project.assignedCloser)}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {project.bidAmount ? `$${project.bidAmount.toLocaleString()}` : '---'}
+                  <TableCell className="text-sm text-muted-foreground">
+                    {project.bidAmount ? `$${project.bidAmount.toLocaleString()}` : '—'}
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {new Date(project.createdAt).toLocaleDateString()}
+                  <TableCell className="text-xs text-muted-foreground">
+                    {new Date(project.createdAt).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                    })}
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => advanceStage.mutate(project.id)}
-                        disabled={
-                          advanceStage.isPending ||
-                          project.stage === ProjectStage.COMPLETED ||
-                          project.stage === ProjectStage.LOST ||
-                          project.stage === ProjectStage.CANCELLED
-                        }
-                        title="Advance Stage"
-                      >
-                        <ChevronRight className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openAssign(project.id)}
-                        title="Assign"
-                      >
-                        <UserPlus className="h-3 w-3" />
-                      </Button>
-                    </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ))}
 
               {data && data.data.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
-                    No projects found.
+                  <TableCell colSpan={8} className="text-center py-16 text-muted-foreground">
+                    No projects found.{' '}
+                    {stageFilter !== 'all' && (
+                      <button
+                        className="underline text-primary"
+                        onClick={() => setStageFilter('all')}
+                      >
+                        Clear filter
+                      </button>
+                    )}
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
+        </div>
 
-          {data && data.meta.totalPages > 1 && (
-            <div className="border-t px-4 py-3 flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                Page {data.meta.page} of {data.meta.totalPages}
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.min(data.meta.totalPages, p + 1))}
-                  disabled={page >= data.meta.totalPages}
-                >
-                  Next
-                </Button>
-              </div>
+        {/* Pagination */}
+        {data && data.meta.totalPages > 1 && (
+          <div className="border-t px-4 py-2.5 flex items-center justify-between shrink-0 bg-card">
+            <p className="text-xs text-muted-foreground">
+              Page {data.meta.page} of {data.meta.totalPages} &middot; {data.meta.total} total
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setPage((p) => Math.min(data.meta.totalPages, p + 1))}
+                disabled={page >= data.meta.totalPages}
+              >
+                Next
+              </Button>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        )}
+      </div>
+
+      {/* ── Project Detail Sheet ───────────────────────────────────────── */}
+      <ProjectDetailSheet
+        projectId={selectedProjectId}
+        onClose={() => setSelectedProjectId(null)}
+      />
     </div>
   );
 }

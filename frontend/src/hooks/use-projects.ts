@@ -130,6 +130,23 @@ export function useAdvanceStage() {
   });
 }
 
+export function useSetStage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, stage }: { id: string; stage: string }) => {
+      const res = await api.patch(`/projects/${id}/stage`, { stage });
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['projects'] });
+      toast.success('Stage updated');
+    },
+    onError: (error: unknown) => {
+      toast.error(extractError(error, 'Failed to update stage'));
+    },
+  });
+}
+
 export function useAssignProject() {
   const qc = useQueryClient();
   return useMutation({
@@ -156,7 +173,7 @@ export function useAssignProject() {
 }
 
 export function useMilestones(projectId: string) {
-  return useQuery({
+  return useQuery<import('@/types').Milestone[]>({
     queryKey: ['projects', projectId, 'milestones'],
     queryFn: async () => {
       const res = await api.get(`/projects/${projectId}/milestones`);

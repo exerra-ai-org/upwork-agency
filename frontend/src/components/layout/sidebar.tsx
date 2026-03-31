@@ -35,7 +35,7 @@ const navItems: NavItem[] = [
     label: 'Projects',
     href: '/projects',
     icon: FolderKanban,
-    roles: ['admin', 'lead', 'bidder', 'closer', 'project_manager'],
+    roles: ['admin', 'lead', 'bidder', 'closer', 'project_manager', 'developer'],
   },
   {
     label: 'Meetings',
@@ -47,7 +47,7 @@ const navItems: NavItem[] = [
     label: 'Tasks',
     href: '/tasks',
     icon: ListChecks,
-    roles: ['admin', 'project_manager', 'operator', 'qa'],
+    roles: ['admin', 'project_manager', 'operator', 'qa', 'closer', 'developer'],
   },
   {
     label: 'QA Reviews',

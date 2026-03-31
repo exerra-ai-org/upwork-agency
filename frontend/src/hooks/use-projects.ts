@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { AxiosError } from 'axios';
 import api from '@/lib/api';
-import type { Project, PaginatedResponse, PipelineCount, ReviewStatus } from '@/types';
+import type { Project, ProjectLink, PaginatedResponse, PipelineCount, ReviewStatus } from '@/types';
 
 interface FindProjectsParams {
   page?: number;
@@ -32,6 +32,7 @@ export function useProjects(params: FindProjectsParams = {}) {
       const res = await api.get('/projects', { params: filtered });
       return res.data;
     },
+    refetchInterval: 30_000,
   });
 }
 
@@ -55,6 +56,7 @@ export function usePipelineCounts(organizationId?: string) {
       const res = await api.get('/projects/pipeline', { params });
       return res.data;
     },
+    refetchInterval: 30_000,
   });
 }
 
@@ -248,6 +250,90 @@ export function useCompleteMilestone() {
     },
     onError: (error: unknown) => {
       toast.error(extractError(error, 'Failed to complete milestone'));
+    },
+  });
+}
+
+// ── Project Links ──────────────────────────────────────────────────────────
+
+export function useProjectLinks(projectId: string) {
+  return useQuery<ProjectLink[]>({
+    queryKey: ['projects', projectId, 'links'],
+    queryFn: async () => {
+      const res = await api.get(`/projects/${projectId}/links`);
+      return res.data;
+    },
+    enabled: !!projectId,
+  });
+}
+
+export function useCreateProjectLink() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      projectId,
+      ...data
+    }: {
+      projectId: string;
+      label: string;
+      url: string;
+      type?: string;
+    }) => {
+      const res = await api.post(`/projects/${projectId}/links`, data);
+      return res.data;
+    },
+    onSuccess: (_, { projectId }) => {
+      qc.invalidateQueries({ queryKey: ['projects', projectId, 'links'] });
+      qc.invalidateQueries({ queryKey: ['projects', projectId] });
+      toast.success('Link added');
+    },
+    onError: (error: unknown) => {
+      toast.error(extractError(error, 'Failed to add link'));
+    },
+  });
+}
+
+export function useUpdateProjectLink() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      projectId,
+      id,
+      ...data
+    }: {
+      projectId: string;
+      id: string;
+      label?: string;
+      url?: string;
+      type?: string;
+    }) => {
+      const res = await api.patch(`/projects/${projectId}/links/${id}`, data);
+      return res.data;
+    },
+    onSuccess: (_, { projectId }) => {
+      qc.invalidateQueries({ queryKey: ['projects', projectId, 'links'] });
+      toast.success('Link updated');
+    },
+    onError: (error: unknown) => {
+      toast.error(extractError(error, 'Failed to update link'));
+    },
+  });
+}
+
+export function useDeleteProjectLink() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ projectId, id }: { projectId: string; id: string }) => {
+      const res = await api.delete(`/projects/${projectId}/links/${id}`);
+      return res.data;
+    },
+    onSuccess: (_, { projectId }) => {
+      qc.invalidateQueries({ queryKey: ['projects', projectId, 'links'] });
+      qc.invalidateQueries({ queryKey: ['projects', projectId] });
+      toast.success('Link removed');
+    },
+    onError: (error: unknown) => {
+      toast.error(extractError(error, 'Failed to remove link'));
     },
   });
 }

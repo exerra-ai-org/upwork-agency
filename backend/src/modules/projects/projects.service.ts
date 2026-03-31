@@ -131,6 +131,7 @@ export class ProjectsService {
         tasks: { orderBy: { createdAt: 'desc' } },
         meetings: { orderBy: { scheduledAt: 'asc' } },
         videoProposals: { orderBy: { createdAt: 'desc' } },
+        links: { orderBy: { createdAt: 'desc' }, include: { addedBy: USER_SELECT } },
       },
     });
 

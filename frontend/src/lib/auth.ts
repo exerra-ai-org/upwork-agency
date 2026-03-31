@@ -67,6 +67,29 @@ export function getUser(): TokenUser | null {
   }
 }
 
+export async function tryRefreshToken(): Promise<boolean> {
+  const refreshTokenValue = getRefreshToken();
+  if (!refreshTokenValue) return false;
+
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'}/auth/refresh`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: refreshTokenValue }),
+      },
+    );
+    if (!response.ok) return false;
+    const data = await response.json();
+    setToken(data.accessToken);
+    setRefreshToken(data.refreshToken);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function getActiveOrg(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem(ACTIVE_ORG_KEY);

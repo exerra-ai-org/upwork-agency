@@ -5,3 +5,5 @@ export * from './update-milestone.dto';
 export * from './assign-project.dto';
 export * from './review-project.dto';
 export * from './import-from-upwork.dto';
+export * from './create-project-link.dto';
+export * from './update-project-link.dto';

@@ -61,6 +61,14 @@ export enum ChatSenderType {
   AGENCY = 'AGENCY',
 }
 
+export enum ProjectLinkType {
+  GITHUB = 'GITHUB',
+  VERCEL = 'VERCEL',
+  STAGING = 'STAGING',
+  DOCS = 'DOCS',
+  OTHER = 'OTHER',
+}
+
 export enum ExperimentStatus {
   DRAFT = 'DRAFT',
   RUNNING = 'RUNNING',
@@ -209,6 +217,7 @@ export interface Project {
   meetings?: Meeting[];
   videoProposals?: VideoProposal[];
   chatMessages?: ChatMessage[];
+  links?: ProjectLink[];
   experimentAssignments?: ExperimentAssignment[];
 
   // Counts (from _count includes)
@@ -268,6 +277,20 @@ export interface Meeting {
   fathomUrl?: string;
   loomUrl?: string;
   driveUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Project Links ───────────────────────────────────────────────────────────
+
+export interface ProjectLink {
+  id: string;
+  projectId: string;
+  label: string;
+  url: string;
+  type: ProjectLinkType;
+  addedById?: string;
+  addedBy?: User;
   createdAt: string;
   updatedAt: string;
 }

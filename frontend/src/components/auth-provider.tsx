@@ -8,6 +8,7 @@ import {
   removeToken,
   setRefreshToken,
   isAuthenticated,
+  tryRefreshToken,
   getUser,
   getActiveOrg,
   setActiveOrg,
@@ -54,25 +55,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const authenticated = isAuthenticated();
-    setIsLoggedIn(authenticated);
-    const tokenUser = authenticated ? getUser() : null;
-    setUser(tokenUser);
+    const init = async () => {
+      let authenticated = isAuthenticated();
 
-    // Restore active org from localStorage or token
-    const storedOrg = getActiveOrg();
-    if (storedOrg) {
-      setActiveOrganizationId(storedOrg);
-    } else if (tokenUser?.organizationId) {
-      setActiveOrganizationId(tokenUser.organizationId);
-      setActiveOrg(tokenUser.organizationId);
-    }
+      // Access token expired — try refresh token before giving up
+      if (!authenticated) {
+        authenticated = await tryRefreshToken();
+      }
 
-    if (authenticated) {
-      fetchMe().finally(() => setIsLoading(false));
-    } else {
+      setIsLoggedIn(authenticated);
+      const tokenUser = authenticated ? getUser() : null;
+      setUser(tokenUser);
+
+      // Restore active org from localStorage or token
+      const storedOrg = getActiveOrg();
+      if (storedOrg) {
+        setActiveOrganizationId(storedOrg);
+      } else if (tokenUser?.organizationId) {
+        setActiveOrganizationId(tokenUser.organizationId);
+        setActiveOrg(tokenUser.organizationId);
+      }
+
+      if (authenticated) {
+        await fetchMe();
+      }
       setIsLoading(false);
-    }
+    };
+    init();
   }, [fetchMe]);
 
   const login = useCallback(

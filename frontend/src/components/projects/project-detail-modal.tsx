@@ -17,6 +17,8 @@ import {
   useCreateVideoProposal,
   useDeleteVideoProposal,
 } from '@/hooks/use-videos';
+import { useTasks, useCreateTask, useUpdateTask } from '@/hooks/use-tasks';
+import { useProjectLinks, useCreateProjectLink, useDeleteProjectLink } from '@/hooks/use-projects';
 import { useUsers } from '@/hooks/use-users';
 import { useAuthContext } from '@/components/auth-provider';
 import { Badge } from '@/components/ui/badge';
@@ -64,9 +66,13 @@ import {
   ThumbsUp,
   ThumbsDown,
   Send,
+  Link2,
+  Github,
+  Globe,
+  ListTodo,
 } from 'lucide-react';
-import { ProjectStage, PricingType, ReviewStatus } from '@/types';
-import type { Project, Milestone, VideoProposal } from '@/types';
+import { ProjectStage, PricingType, ReviewStatus, TaskStatus, ProjectLinkType } from '@/types';
+import type { Project, Milestone, VideoProposal, Task, ProjectLink } from '@/types';
 
 // ── Stage display helpers ────────────────────────────────────────────────────
 
@@ -139,6 +145,14 @@ function canManageVideos(role: string) {
 
 function canReview(role: string) {
   return ['admin', 'lead'].includes(role);
+}
+
+function canManageLinks(role: string) {
+  return ['admin', 'project_manager', 'developer'].includes(role);
+}
+
+function canManageTasks(role: string) {
+  return ['admin', 'project_manager', 'operator'].includes(role);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -569,6 +583,16 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
   const createMilestone = useCreateMilestone();
   const createVideo = useCreateVideoProposal();
 
+  // Tasks
+  const { data: tasksData } = useTasks({ projectId: projectId ?? undefined, limit: 50 });
+  const createTask = useCreateTask();
+  const updateTask = useUpdateTask();
+
+  // Links
+  const { data: linksData } = useProjectLinks(projectId ?? '');
+  const createLink = useCreateProjectLink();
+  const deleteLink = useDeleteProjectLink();
+
   // Script & Bid form state
   const [scriptForm, setScriptForm] = useState({
     coverLetter: '',
@@ -597,6 +621,14 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
 
   // Review form
   const [reviewComments, setReviewComments] = useState('');
+
+  // Task add form
+  const [addingTask, setAddingTask] = useState(false);
+  const [taskForm, setTaskForm] = useState({ title: '', description: '', priority: '0' });
+
+  // Link add form
+  const [addingLink, setAddingLink] = useState(false);
+  const [linkForm, setLinkForm] = useState({ label: '', url: '', type: 'OTHER' });
 
   // Closer assignment (for overview tab)
   const [selectedCloser, setSelectedCloser] = useState('');
@@ -857,6 +889,14 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
                           Won Details
                         </TabsTrigger>
                       )}
+                      <TabsTrigger value="tasks" className="flex-1">
+                        Tasks
+                        {(tasksData?.data?.length ?? 0) > 0 && (
+                          <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[10px]">
+                            {tasksData?.data?.length}
+                          </Badge>
+                        )}
+                      </TabsTrigger>
                     </TabsList>
                   </div>
 
@@ -969,6 +1009,126 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
                             <Users className="mr-1 h-3 w-3" />
                             Assign
                           </Button>
+                        </div>
+                      )}
+                    </div>
+
+                    <Separator />
+
+                    {/* Links / Resources */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          <Link2 className="h-3.5 w-3.5" />
+                          Links & Resources
+                        </h3>
+                        {canManageLinks(role) && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => setAddingLink(!addingLink)}
+                          >
+                            <Plus className="mr-1 h-3 w-3" />
+                            Add
+                          </Button>
+                        )}
+                      </div>
+
+                      {addingLink && canManageLinks(role) && (
+                        <div className="rounded-lg border border-border/60 bg-muted/30 p-3 mb-3 space-y-2">
+                          <Input
+                            placeholder="Label (e.g. GitHub Repo)"
+                            value={linkForm.label}
+                            onChange={(e) => setLinkForm({ ...linkForm, label: e.target.value })}
+                          />
+                          <Input
+                            placeholder="URL (https://...)"
+                            value={linkForm.url}
+                            onChange={(e) => setLinkForm({ ...linkForm, url: e.target.value })}
+                          />
+                          <Select
+                            value={linkForm.type}
+                            onValueChange={(v) => setLinkForm({ ...linkForm, type: v })}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.values(ProjectLinkType).map((t) => (
+                                <SelectItem key={t} value={t} className="text-xs">
+                                  {t}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              disabled={!linkForm.label || !linkForm.url || createLink.isPending}
+                              onClick={() => {
+                                createLink.mutate(
+                                  {
+                                    projectId: project.id,
+                                    label: linkForm.label,
+                                    url: linkForm.url,
+                                    type: linkForm.type,
+                                  },
+                                  {
+                                    onSuccess: () => {
+                                      setLinkForm({ label: '', url: '', type: 'OTHER' });
+                                      setAddingLink(false);
+                                    },
+                                  },
+                                );
+                              }}
+                            >
+                              Add Link
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setAddingLink(false)}>
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {(linksData?.length ?? 0) === 0 && !addingLink ? (
+                        <p className="text-xs text-muted-foreground">No links added yet.</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {linksData?.map((link: ProjectLink) => (
+                            <div
+                              key={link.id}
+                              className="flex items-center justify-between rounded-md border border-border/40 px-3 py-2"
+                            >
+                              <a
+                                href={link.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2 text-sm text-primary hover:underline truncate"
+                              >
+                                {link.type === ProjectLinkType.GITHUB ? (
+                                  <Github className="h-3.5 w-3.5 shrink-0" />
+                                ) : (
+                                  <Globe className="h-3.5 w-3.5 shrink-0" />
+                                )}
+                                {link.label}
+                                <ExternalLink className="h-3 w-3 shrink-0 opacity-50" />
+                              </a>
+                              {(role === 'admin' || user?.id === link.addedById) && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0"
+                                  onClick={() =>
+                                    deleteLink.mutate({ projectId: project.id, id: link.id })
+                                  }
+                                >
+                                  <Trash2 className="h-3 w-3 text-muted-foreground" />
+                                </Button>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -1629,6 +1789,162 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
                       </div>
                     </TabsContent>
                   )}
+
+                  {/* ── Tasks Tab ───────────────────────────────────────── */}
+                  <TabsContent
+                    value="tasks"
+                    className="mt-0 flex-1 space-y-4 overflow-y-auto px-6 pb-6"
+                  >
+                    <div className="flex items-center justify-between">
+                      <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        <ListTodo className="h-3.5 w-3.5" />
+                        Project Tasks
+                      </h3>
+                      {canManageTasks(role) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setAddingTask(!addingTask)}
+                        >
+                          <Plus className="mr-1 h-3 w-3" />
+                          Add Task
+                        </Button>
+                      )}
+                    </div>
+
+                    {addingTask && canManageTasks(role) && (
+                      <div className="rounded-lg border border-border/60 bg-muted/30 p-4 space-y-3">
+                        <div className="space-y-2">
+                          <Label className="text-xs">Title</Label>
+                          <Input
+                            placeholder="Task title"
+                            value={taskForm.title}
+                            onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs">Description</Label>
+                          <Textarea
+                            placeholder="Optional description"
+                            value={taskForm.description}
+                            rows={2}
+                            onChange={(e) =>
+                              setTaskForm({ ...taskForm, description: e.target.value })
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs">Priority (0-10)</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={taskForm.priority}
+                            onChange={(e) => setTaskForm({ ...taskForm, priority: e.target.value })}
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            disabled={!taskForm.title || createTask.isPending}
+                            onClick={() => {
+                              createTask.mutate(
+                                {
+                                  projectId: project.id,
+                                  title: taskForm.title,
+                                  description: taskForm.description || undefined,
+                                  priority: parseInt(taskForm.priority) || 0,
+                                },
+                                {
+                                  onSuccess: () => {
+                                    setTaskForm({ title: '', description: '', priority: '0' });
+                                    setAddingTask(false);
+                                  },
+                                },
+                              );
+                            }}
+                          >
+                            Create
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setAddingTask(false)}>
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {(tasksData?.data?.length ?? 0) === 0 ? (
+                      <p className="text-sm text-muted-foreground py-4">
+                        No tasks for this project yet.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {tasksData?.data?.map((task: Task) => (
+                          <div
+                            key={task.id}
+                            className="flex items-center justify-between rounded-lg border border-border/50 bg-card/50 p-3"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{task.title}</p>
+                              {task.description && (
+                                <p className="text-xs text-muted-foreground truncate mt-0.5">
+                                  {task.description}
+                                </p>
+                              )}
+                              <div className="flex items-center gap-2 mt-1">
+                                {task.assignee && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {task.assignee.firstName ?? task.assignee.email}
+                                  </span>
+                                )}
+                                {task.priority > 0 && (
+                                  <Badge variant="outline" className="text-[10px] h-4 px-1">
+                                    P{task.priority}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {canManageTasks(role) ? (
+                                <Select
+                                  value={task.status}
+                                  onValueChange={(value) =>
+                                    updateTask.mutate({ id: task.id, status: value as TaskStatus })
+                                  }
+                                >
+                                  <SelectTrigger className="h-7 w-[120px] text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {Object.values(TaskStatus).map((s) => (
+                                      <SelectItem key={s} value={s} className="text-xs">
+                                        {s.replace(/_/g, ' ')}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <Badge
+                                  variant={
+                                    task.status === TaskStatus.DONE
+                                      ? 'success'
+                                      : task.status === TaskStatus.BLOCKED
+                                        ? 'destructive'
+                                        : task.status === TaskStatus.IN_PROGRESS
+                                          ? 'default'
+                                          : 'secondary'
+                                  }
+                                  className="text-[10px]"
+                                >
+                                  {task.status.replace(/_/g, ' ')}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </TabsContent>
                 </Tabs>
               </div>
 

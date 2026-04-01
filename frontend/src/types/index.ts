@@ -41,6 +41,7 @@ export enum TaskStatus {
   IN_REVIEW = 'IN_REVIEW',
   DONE = 'DONE',
   BLOCKED = 'BLOCKED',
+  FINALISED = 'FINALISED',
 }
 
 export enum QAStatus {
@@ -165,6 +166,7 @@ export interface Project {
   videoScript?: string;
   upworkAccount?: string;
   bidAmount?: number;
+  suggestedBidAmount?: number;
   bidSubmittedAt?: string;
 
   // Script Review (Lead -> Bidder)
@@ -295,6 +297,18 @@ export interface ProjectLink {
   updatedAt: string;
 }
 
+// ─── Upwork Accounts ─────────────────────────────────────────────────────────
+
+export interface UpworkAccount {
+  id: string;
+  userId: string;
+  accountName: string;
+  profileUrl?: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── Chat Messages (Synced from Upwork Extension) ───────────────────────────
 
 export interface ChatMessage {
@@ -342,6 +356,7 @@ export interface Task {
   description?: string;
   status: TaskStatus;
   priority: number;
+  isUrgent?: boolean;
   estimatedHours?: number;
   completedAt?: string;
   qaReview?: QAReview;

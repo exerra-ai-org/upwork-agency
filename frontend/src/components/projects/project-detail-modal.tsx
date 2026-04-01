@@ -19,6 +19,7 @@ import {
 } from '@/hooks/use-videos';
 import { useTasks, useCreateTask, useUpdateTask } from '@/hooks/use-tasks';
 import { useProjectLinks, useCreateProjectLink, useDeleteProjectLink } from '@/hooks/use-projects';
+import { useUpworkAccounts } from '@/hooks/use-upwork-accounts';
 import { useUsers } from '@/hooks/use-users';
 import { useAuthContext } from '@/components/auth-provider';
 import { Badge } from '@/components/ui/badge';
@@ -129,6 +130,33 @@ function canEditScript(role: string) {
 
 function canEditBidDetails(role: string) {
   return ['admin', 'lead', 'closer'].includes(role);
+}
+
+function canSuggestBid(role: string) {
+  return ['admin', 'bidder'].includes(role);
+}
+
+function canSetActualBid(role: string) {
+  return ['admin', 'closer'].includes(role);
+}
+
+const STAGE_PIPELINE: ProjectStage[] = [
+  ProjectStage.DISCOVERED,
+  ProjectStage.SCRIPTED,
+  ProjectStage.SCRIPT_REVIEW,
+  ProjectStage.VIDEO_DRAFT,
+  ProjectStage.UNDER_REVIEW,
+  ProjectStage.BID_SUBMITTED,
+  ProjectStage.VIEWED,
+  ProjectStage.MESSAGED,
+  ProjectStage.INTERVIEW,
+  ProjectStage.WON,
+  ProjectStage.IN_PROGRESS,
+  ProjectStage.COMPLETED,
+];
+
+function isStageAtLeast(current: ProjectStage, minimum: ProjectStage): boolean {
+  return STAGE_PIPELINE.indexOf(current) >= STAGE_PIPELINE.indexOf(minimum);
 }
 
 function canEditWonDetails(role: string) {
@@ -594,6 +622,7 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
 
   // Links
   const { data: linksData } = useProjectLinks(projectId ?? '');
+  const { data: upworkAccounts } = useUpworkAccounts();
   const createLink = useCreateProjectLink();
   const deleteLink = useDeleteProjectLink();
 
@@ -603,6 +632,7 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
     videoScript: '',
     upworkAccount: '',
     bidAmount: '',
+    suggestedBidAmount: '',
   });
 
   // Won Details form state
@@ -652,6 +682,7 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
       videoScript: project.videoScript ?? '',
       upworkAccount: project.upworkAccount ?? '',
       bidAmount: project.bidAmount?.toString() ?? '',
+      suggestedBidAmount: project.suggestedBidAmount?.toString() ?? '',
     });
     setWonForm({
       clientName: project.clientName ?? '',
@@ -694,6 +725,9 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
       videoScript: scriptForm.videoScript || undefined,
       upworkAccount: scriptForm.upworkAccount || undefined,
       bidAmount: scriptForm.bidAmount ? parseFloat(scriptForm.bidAmount) : undefined,
+      suggestedBidAmount: scriptForm.suggestedBidAmount
+        ? parseFloat(scriptForm.suggestedBidAmount)
+        : undefined,
       lastEditedById: user?.id,
     });
   };
@@ -797,7 +831,7 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
   const wonEditable = canEditWonDetails(role);
   const milestoneManage = canManageMilestones(role);
   const videoManage = canManageVideos(role);
-  const canSaveScript = scriptEditable || bidEditable;
+  const canSaveScript = scriptEditable || bidEditable || canSuggestBid(role);
   const canAssign = ['admin', 'lead'].includes(role);
 
   const videos = videosData?.data ?? [];
@@ -879,7 +913,11 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
                       <TabsTrigger value="script" className="flex-1">
                         Script & Bid
                       </TabsTrigger>
-                      <TabsTrigger value="videos" className="flex-1">
+                      <TabsTrigger
+                        value="videos"
+                        className="flex-1"
+                        disabled={!isStageAtLeast(project.stage, ProjectStage.VIDEO_DRAFT)}
+                      >
                         Videos
                         {videos.length > 0 && (
                           <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[10px]">
@@ -897,7 +935,17 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
                           Won Details
                         </TabsTrigger>
                       )}
-                      <TabsTrigger value="tasks" className="flex-1">
+                      <TabsTrigger
+                        value="tasks"
+                        className="flex-1"
+                        disabled={
+                          ![
+                            ProjectStage.WON,
+                            ProjectStage.IN_PROGRESS,
+                            ProjectStage.COMPLETED,
+                          ].includes(project.stage)
+                        }
+                      >
                         Tasks
                         {(tasksData?.data?.length ?? 0) > 0 && (
                           <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[10px]">
@@ -1237,12 +1285,43 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
                     <div>
                       <h3 className="mb-3 text-sm font-semibold">Bid Details</h3>
                       <div className="grid grid-cols-2 gap-4">
+                        {/* Suggested Bid — editable by bidders/admins */}
+                        <div className="space-y-1.5">
+                          <Label htmlFor="suggestedBid" className="text-xs">
+                            Suggested Bid ($)
+                            {!canSuggestBid(role) && (
+                              <span className="ml-1 font-normal text-muted-foreground">
+                                (read-only)
+                              </span>
+                            )}
+                          </Label>
+                          <div className="relative">
+                            <DollarSign className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                              id="suggestedBid"
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              className="pl-7"
+                              value={scriptForm.suggestedBidAmount}
+                              onChange={(e) =>
+                                setScriptForm((p) => ({
+                                  ...p,
+                                  suggestedBidAmount: e.target.value,
+                                }))
+                              }
+                              disabled={!canSuggestBid(role)}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Actual Bid — only closers/admins */}
                         <div className="space-y-1.5">
                           <Label htmlFor="bidAmount" className="text-xs">
                             Bid Amount ($)
-                            {!bidEditable && (
+                            {!canSetActualBid(role) && (
                               <span className="ml-1 font-normal text-muted-foreground">
-                                (read-only)
+                                (closer only)
                               </span>
                             )}
                           </Label>
@@ -1258,29 +1337,55 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
                               onChange={(e) =>
                                 setScriptForm((p) => ({ ...p, bidAmount: e.target.value }))
                               }
-                              disabled={!bidEditable}
+                              disabled={!canSetActualBid(role)}
                             />
                           </div>
                         </div>
-                        <div className="space-y-1.5">
-                          <Label htmlFor="upworkAccount" className="text-xs">
-                            Upwork Account
-                            {!bidEditable && (
-                              <span className="ml-1 font-normal text-muted-foreground">
-                                (read-only)
-                              </span>
-                            )}
-                          </Label>
+                      </div>
+
+                      {/* Upwork Account — dropdown for closers */}
+                      <div className="mt-3 space-y-1.5">
+                        <Label htmlFor="upworkAccount" className="text-xs">
+                          Upwork Account
+                          {!canSetActualBid(role) && (
+                            <span className="ml-1 font-normal text-muted-foreground">
+                              (closer only)
+                            </span>
+                          )}
+                        </Label>
+                        {canSetActualBid(role) && upworkAccounts && upworkAccounts.length > 0 ? (
+                          <Select
+                            value={scriptForm.upworkAccount}
+                            onValueChange={(v) =>
+                              setScriptForm((p) => ({ ...p, upworkAccount: v }))
+                            }
+                          >
+                            <SelectTrigger className="text-sm">
+                              <SelectValue placeholder="Select Upwork account..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {upworkAccounts.map((acc) => (
+                                <SelectItem key={acc.id} value={acc.accountName}>
+                                  {acc.accountName}
+                                  {acc.isDefault && ' (default)'}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
                           <Input
                             id="upworkAccount"
                             placeholder="e.g. AOP_Main"
                             value={scriptForm.upworkAccount}
                             onChange={(e) =>
-                              setScriptForm((p) => ({ ...p, upworkAccount: e.target.value }))
+                              setScriptForm((p) => ({
+                                ...p,
+                                upworkAccount: e.target.value,
+                              }))
                             }
-                            disabled={!bidEditable}
+                            disabled={!canSetActualBid(role)}
                           />
-                        </div>
+                        )}
                       </div>
                     </div>
 

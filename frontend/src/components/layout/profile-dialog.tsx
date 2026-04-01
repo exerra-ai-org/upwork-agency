@@ -12,8 +12,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
 import { useAuthContext } from '@/components/auth-provider';
 import { useUpdateProfile, useChangePassword } from '@/hooks/use-profile';
+import {
+  useUpworkAccounts,
+  useCreateUpworkAccount,
+  useDeleteUpworkAccount,
+  useSetDefaultUpworkAccount,
+} from '@/hooks/use-upwork-accounts';
+import { Trash2 } from 'lucide-react';
 
 interface ProfileDialogProps {
   open: boolean;
@@ -32,6 +40,14 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
 
   const updateProfile = useUpdateProfile();
   const changePassword = useChangePassword();
+
+  // Upwork accounts
+  const { data: upworkAccounts } = useUpworkAccounts();
+  const createUpworkAccount = useCreateUpworkAccount();
+  const deleteUpworkAccount = useDeleteUpworkAccount();
+  const setDefaultAccount = useSetDefaultUpworkAccount();
+  const [newAccountName, setNewAccountName] = useState('');
+  const [newAccountUrl, setNewAccountUrl] = useState('');
 
   useEffect(() => {
     if (open && fullUser) {
@@ -89,7 +105,10 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
               Edit Profile
             </TabsTrigger>
             <TabsTrigger value="password" className="flex-1">
-              Change Password
+              Password
+            </TabsTrigger>
+            <TabsTrigger value="upwork" className="flex-1">
+              Upwork
             </TabsTrigger>
           </TabsList>
 
@@ -169,6 +188,91 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
                 disabled={changePassword.isPending || !currentPassword || !newPassword}
               >
                 {changePassword.isPending ? 'Updating...' : 'Update Password'}
+              </Button>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="upwork" className="space-y-4 pt-4">
+            <p className="text-sm text-muted-foreground">
+              Link your Upwork accounts. These appear as options when setting bid details on
+              projects.
+            </p>
+
+            {/* Existing accounts */}
+            {upworkAccounts && upworkAccounts.length > 0 ? (
+              <div className="space-y-2">
+                {upworkAccounts.map((acc) => (
+                  <div
+                    key={acc.id}
+                    className="flex items-center justify-between rounded-md border px-3 py-2"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{acc.accountName}</span>
+                      {acc.isDefault && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          Default
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {!acc.isDefault && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs"
+                          onClick={() => setDefaultAccount.mutate(acc.id)}
+                        >
+                          Set Default
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0"
+                        onClick={() => deleteUpworkAccount.mutate(acc.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">No Upwork accounts linked yet.</p>
+            )}
+
+            {/* Add new account */}
+            <div className="space-y-2 rounded-md border p-3">
+              <Label className="text-xs font-semibold">Link New Account</Label>
+              <Input
+                placeholder="Account name (e.g. AOP_Main)"
+                value={newAccountName}
+                onChange={(e) => setNewAccountName(e.target.value)}
+              />
+              <Input
+                placeholder="Profile URL (optional)"
+                value={newAccountUrl}
+                onChange={(e) => setNewAccountUrl(e.target.value)}
+              />
+              <Button
+                size="sm"
+                disabled={!newAccountName || createUpworkAccount.isPending}
+                onClick={() => {
+                  createUpworkAccount.mutate(
+                    {
+                      accountName: newAccountName,
+                      profileUrl: newAccountUrl || undefined,
+                    },
+                    {
+                      onSuccess: () => {
+                        setNewAccountName('');
+                        setNewAccountUrl('');
+                      },
+                    },
+                  );
+                }}
+              >
+                {createUpworkAccount.isPending ? 'Linking...' : 'Link Account'}
               </Button>
             </div>
           </TabsContent>

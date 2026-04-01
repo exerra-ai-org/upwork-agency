@@ -91,3 +91,14 @@ export function useAssignTask() {
     },
   });
 }
+
+export function useProjectTasks(projectId: string) {
+  return useQuery<Task[]>({
+    queryKey: ['tasks', 'by-project', projectId],
+    queryFn: async () => {
+      const res = await api.get(`/tasks/by-project/${projectId}`);
+      return res.data;
+    },
+    enabled: !!projectId,
+  });
+}

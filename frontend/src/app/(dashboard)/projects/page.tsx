@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useProjects } from '@/hooks/use-projects';
 import { useAuthContext } from '@/components/auth-provider';
-import { ProjectStage, PricingType } from '@/types';
+import { ProjectStage, PricingType, TaskStatus } from '@/types';
 import type { Project } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,8 @@ import {
   AlertTriangle,
   ExternalLink,
 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import api from '@/lib/api';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -78,17 +80,70 @@ const STAGE_BADGE: Record<string, { label: string; className: string }> = {
   },
 };
 
+const TASK_STATUS_STYLES: Record<string, { label: string; dotClass: string; textClass: string }> = {
+  [TaskStatus.TODO]: {
+    label: 'Todo',
+    dotClass: 'bg-slate-400',
+    textClass: 'text-slate-400',
+  },
+  [TaskStatus.IN_PROGRESS]: {
+    label: 'In Progress',
+    dotClass: 'bg-blue-400',
+    textClass: 'text-blue-400',
+  },
+  [TaskStatus.IN_REVIEW]: {
+    label: 'In Review',
+    dotClass: 'bg-amber-400',
+    textClass: 'text-amber-400',
+  },
+  [TaskStatus.DONE]: {
+    label: 'Done',
+    dotClass: 'bg-emerald-400',
+    textClass: 'text-emerald-400',
+  },
+  [TaskStatus.BLOCKED]: {
+    label: 'Blocked',
+    dotClass: 'bg-red-400',
+    textClass: 'text-red-400',
+  },
+};
+
+const TASK_STATUS_ORDER = [
+  TaskStatus.TODO,
+  TaskStatus.IN_PROGRESS,
+  TaskStatus.IN_REVIEW,
+  TaskStatus.DONE,
+  TaskStatus.BLOCKED,
+];
+
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function ProjectsPage() {
   const { activeOrganizationId } = useAuthContext();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const queryClient = useQueryClient();
 
   const { data, isLoading } = useProjects({
     limit: 200,
     organizationId: activeOrganizationId ?? undefined,
   });
+
+  const prefetchProject = useCallback(
+    (id: string) => {
+      queryClient.prefetchQuery({
+        queryKey: ['projects', id],
+        queryFn: () => api.get(`/projects/${id}`).then((r: { data: unknown }) => r.data),
+        staleTime: 30_000,
+      });
+      queryClient.prefetchQuery({
+        queryKey: ['tasks', 'by-project', id],
+        queryFn: () => api.get(`/tasks?projectId=${id}`).then((r: { data: unknown }) => r.data),
+        staleTime: 30_000,
+      });
+    },
+    [queryClient],
+  );
 
   const filteredProjects = useMemo(() => {
     if (!data?.data) return [];
@@ -173,14 +228,16 @@ export default function ProjectsPage() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {filteredProjects.map((project) => {
               const badge = STAGE_BADGE[project.stage];
-              const taskCount = project._count?.tasks ?? 0;
               const meetingCount = project._count?.meetings ?? 0;
               const milestoneCount = project._count?.milestones ?? 0;
+              const statusCounts = project.taskStatusCounts ?? {};
+              const urgentCount = project.urgentTaskCount ?? 0;
 
               return (
                 <Link
                   key={project.id}
                   href={`/projects/${project.id}`}
+                  onMouseEnter={() => prefetchProject(project.id)}
                   className="group rounded-xl border bg-card p-5 space-y-3 transition-all hover:shadow-glow-sm hover:border-primary/30"
                 >
                   {/* Title + Badge */}
@@ -207,12 +264,50 @@ export default function ProjectsPage() {
                     <span>{getPricingLabel(project)}</span>
                   </div>
 
-                  {/* Task / Meeting summary */}
+                  {/* Task status mini badges */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <ListTodo className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {TASK_STATUS_ORDER.map((status) => {
+                          const count = statusCounts[status];
+                          if (!count || count <= 0) return null;
+                          const style = TASK_STATUS_STYLES[status];
+                          return (
+                            <span
+                              key={status}
+                              className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${style.textClass} bg-muted/50`}
+                            >
+                              <span
+                                className={`inline-block h-1.5 w-1.5 rounded-full ${style.dotClass}`}
+                              />
+                              {count}
+                            </span>
+                          );
+                        })}
+                        {Object.values(statusCounts).every((c) => !c || c <= 0) && (
+                          <span className="text-[10px] text-muted-foreground/60">No tasks</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {urgentCount > 0 && (
+                      <div className="flex items-center gap-1.5 pl-5">
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] bg-red-500/15 text-red-400 border-red-500/30"
+                        >
+                          {'\u{1F534}'} {urgentCount} urgent
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Meeting count */}
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <ListTodo className="h-3.5 w-3.5 shrink-0" />
+                    <Calendar className="h-3.5 w-3.5 shrink-0" />
                     <span>
-                      {taskCount} task{taskCount !== 1 ? 's' : ''} &middot; {meetingCount} meeting
-                      {meetingCount !== 1 ? 's' : ''}
+                      {meetingCount} meeting{meetingCount !== 1 ? 's' : ''}
                     </span>
                   </div>
 

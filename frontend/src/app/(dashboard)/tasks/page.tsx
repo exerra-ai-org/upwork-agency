@@ -1,11 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { useProjectTasks, useCreateTask } from '@/hooks/use-tasks';
+import { useAllTasks, useCreateTask } from '@/hooks/use-tasks';
 import { useProjects } from '@/hooks/use-projects';
 import { useAuthContext } from '@/components/auth-provider';
 import TaskKanban from '@/components/tasks/task-kanban';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -30,21 +29,25 @@ import {
 import { Plus, ListChecks } from 'lucide-react';
 import { ProjectStage } from '@/types';
 
+const ALL_PROJECTS_VALUE = '__all__';
+
 const DELIVERY_STAGES = [ProjectStage.IN_PROGRESS, ProjectStage.WON, ProjectStage.COMPLETED];
 
 export default function TasksPage() {
   const { user, activeOrganizationId } = useAuthContext();
   const role = user?.role?.toLowerCase() ?? '';
   const canCreate = ['admin', 'project_manager', 'operator'].includes(role);
+  const isDeveloper = role === 'developer';
 
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(ALL_PROJECTS_VALUE);
   const [createOpen, setCreateOpen] = useState(false);
+  const [createProjectId, setCreateProjectId] = useState<string>('');
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDescription, setTaskDescription] = useState('');
   const [taskPriority, setTaskPriority] = useState('0');
   const [taskUrgent, setTaskUrgent] = useState(false);
 
-  // Fetch delivery-phase projects for the project selector
+  // Fetch delivery-phase projects for the project filter
   const { data: projectsData } = useProjects({
     limit: 200,
     organizationId: activeOrganizationId ?? undefined,
@@ -52,14 +55,17 @@ export default function TasksPage() {
   const deliveryProjects =
     projectsData?.data?.filter((p) => DELIVERY_STAGES.includes(p.stage)) ?? [];
 
-  // Fetch tasks for selected project
-  const { data: tasks, isLoading: tasksLoading } = useProjectTasks(selectedProjectId);
-  const createTask = useCreateTask();
-
-  // Auto-select first project if none selected
-  if (!selectedProjectId && deliveryProjects.length > 0) {
-    setSelectedProjectId(deliveryProjects[0].id);
+  // Build task query params based on role
+  const taskParams: { assigneeId?: string; projectId?: string } = {};
+  if (isDeveloper && user?.id) {
+    taskParams.assigneeId = user.id;
   }
+  if (selectedProjectId && selectedProjectId !== ALL_PROJECTS_VALUE) {
+    taskParams.projectId = selectedProjectId;
+  }
+
+  const { data: tasks, isLoading: tasksLoading } = useAllTasks(taskParams);
+  const createTask = useCreateTask();
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col gap-4 overflow-hidden p-6">
@@ -74,12 +80,13 @@ export default function TasksPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Project selector */}
+          {/* Project filter (optional) */}
           <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
             <SelectTrigger className="w-72">
-              <SelectValue placeholder="Select a project..." />
+              <SelectValue placeholder="All Projects" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value={ALL_PROJECTS_VALUE}>All Projects</SelectItem>
               {deliveryProjects.map((p) => (
                 <SelectItem key={p.id} value={p.id}>
                   {p.title}
@@ -94,7 +101,7 @@ export default function TasksPage() {
           </Select>
 
           {/* Create task */}
-          {canCreate && selectedProjectId && (
+          {canCreate && (
             <Dialog open={createOpen} onOpenChange={setCreateOpen}>
               <DialogTrigger asChild>
                 <Button size="sm">
@@ -105,9 +112,26 @@ export default function TasksPage() {
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Create Task</DialogTitle>
-                  <DialogDescription>Add a new task to the selected project.</DialogDescription>
+                  <DialogDescription>Add a new task to a project.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3 py-2">
+                  <div className="space-y-1.5">
+                    <Label>
+                      Project <span className="text-destructive">*</span>
+                    </Label>
+                    <Select value={createProjectId} onValueChange={setCreateProjectId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a project..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {deliveryProjects.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div className="space-y-1.5">
                     <Label>Title</Label>
                     <Input
@@ -154,11 +178,11 @@ export default function TasksPage() {
                     Cancel
                   </Button>
                   <Button
-                    disabled={!taskTitle || createTask.isPending}
+                    disabled={!taskTitle || !createProjectId || createTask.isPending}
                     onClick={() => {
                       createTask.mutate(
                         {
-                          projectId: selectedProjectId,
+                          projectId: createProjectId,
                           title: taskTitle,
                           description: taskDescription || undefined,
                           priority: parseInt(taskPriority) || 0,
@@ -170,6 +194,7 @@ export default function TasksPage() {
                             setTaskDescription('');
                             setTaskPriority('0');
                             setTaskUrgent(false);
+                            setCreateProjectId('');
                             setCreateOpen(false);
                           },
                         },
@@ -187,11 +212,7 @@ export default function TasksPage() {
 
       {/* Kanban */}
       <div className="flex-1 overflow-hidden">
-        {!selectedProjectId ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
-            Select a project to view its tasks
-          </div>
-        ) : tasksLoading ? (
+        {tasksLoading ? (
           <div className="flex gap-4 h-full">
             {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="min-w-[280px] w-[280px] space-y-3">
@@ -202,7 +223,10 @@ export default function TasksPage() {
             ))}
           </div>
         ) : (
-          <TaskKanban tasks={tasks ?? []} projectId={selectedProjectId} />
+          <TaskKanban
+            tasks={tasks ?? []}
+            projectId={selectedProjectId !== ALL_PROJECTS_VALUE ? selectedProjectId : undefined}
+          />
         )}
       </div>
     </div>

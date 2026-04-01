@@ -19,6 +19,7 @@ import {
   useCreateProject,
   useAdvanceStage,
   useUpdateProject,
+  useSetStage,
 } from '@/hooks/use-projects';
 import { useNiches } from '@/hooks/use-niches';
 import { useUsers } from '@/hooks/use-users';
@@ -47,7 +48,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Plus, Archive, XCircle, Trophy } from 'lucide-react';
+import { Plus, Archive, XCircle, Trophy, RotateCcw } from 'lucide-react';
 import { ProjectStage, PricingType, ReviewStatus } from '@/types';
 import type { Project } from '@/types';
 import { STAGE_LABELS } from '@/components/projects/project-detail-modal';
@@ -167,6 +168,11 @@ export default function ProjectsPage() {
   const [showLost, setShowLost] = useState(false);
   const [showCancelled, setShowCancelled] = useState(false);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
+
+  // Restore dialog state (admin only)
+  const [restoreProject, setRestoreProject] = useState<Project | null>(null);
+  const [restoreTargetStage, setRestoreTargetStage] = useState<string>('');
+  const setStage = useSetStage();
 
   // Main board query — excludes terminal + hidden stages
   const { data: mainData, isLoading } = useProjects({
@@ -706,13 +712,31 @@ export default function ProjectsPage() {
               </h3>
               <div className="flex flex-wrap gap-2">
                 {lostData.data.map((p) => (
-                  <button
+                  <div
                     key={p.id}
-                    onClick={() => setSelectedProjectId(p.id)}
-                    className="rounded-md border bg-card px-3 py-2 text-left text-sm transition-colors hover:bg-accent/50"
+                    className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm"
                   >
-                    <span className="font-medium">{p.title}</span>
-                  </button>
+                    <button
+                      onClick={() => setSelectedProjectId(p.id)}
+                      className="font-medium transition-colors hover:text-primary"
+                    >
+                      {p.title}
+                    </button>
+                    {role === 'admin' && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => {
+                          setRestoreProject(p);
+                          setRestoreTargetStage(ProjectStage.DISCOVERED);
+                        }}
+                      >
+                        <RotateCcw className="mr-1 h-3 w-3" />
+                        Restore
+                      </Button>
+                    )}
+                  </div>
                 ))}
                 {lostData.data.length === 0 && (
                   <p className="text-xs text-muted-foreground">No lost projects.</p>
@@ -728,13 +752,31 @@ export default function ProjectsPage() {
               </h3>
               <div className="flex flex-wrap gap-2">
                 {cancelledData.data.map((p) => (
-                  <button
+                  <div
                     key={p.id}
-                    onClick={() => setSelectedProjectId(p.id)}
-                    className="rounded-md border bg-card px-3 py-2 text-left text-sm transition-colors hover:bg-accent/50"
+                    className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm"
                   >
-                    <span className="font-medium">{p.title}</span>
-                  </button>
+                    <button
+                      onClick={() => setSelectedProjectId(p.id)}
+                      className="font-medium transition-colors hover:text-primary"
+                    >
+                      {p.title}
+                    </button>
+                    {role === 'admin' && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => {
+                          setRestoreProject(p);
+                          setRestoreTargetStage(ProjectStage.DISCOVERED);
+                        }}
+                      >
+                        <RotateCcw className="mr-1 h-3 w-3" />
+                        Restore
+                      </Button>
+                    )}
+                  </div>
                 ))}
                 {cancelledData.data.length === 0 && (
                   <p className="text-xs text-muted-foreground">No cancelled projects.</p>
@@ -750,6 +792,63 @@ export default function ProjectsPage() {
         projectId={selectedProjectId}
         onClose={() => setSelectedProjectId(null)}
       />
+
+      {/* ── Restore Dialog (admin only) ────────────────────────────────── */}
+      <Dialog open={!!restoreProject} onOpenChange={(open) => !open && setRestoreProject(null)}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-primary" />
+              Restore Project
+            </DialogTitle>
+            <DialogDescription>
+              Restore &quot;{restoreProject?.title}&quot; to a pipeline stage.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Select value={restoreTargetStage} onValueChange={setRestoreTargetStage}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select stage..." />
+              </SelectTrigger>
+              <SelectContent>
+                {[
+                  ProjectStage.DISCOVERED,
+                  ProjectStage.SCRIPTED,
+                  ProjectStage.SCRIPT_REVIEW,
+                  ProjectStage.VIDEO_DRAFT,
+                  ProjectStage.UNDER_REVIEW,
+                  ProjectStage.BID_SUBMITTED,
+                  ProjectStage.VIEWED,
+                  ProjectStage.MESSAGED,
+                  ProjectStage.INTERVIEW,
+                ].map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {STAGE_LABELS[s] ?? s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRestoreProject(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!restoreTargetStage || setStage.isPending}
+              onClick={() => {
+                if (restoreProject && restoreTargetStage) {
+                  setStage.mutate(
+                    { id: restoreProject.id, stage: restoreTargetStage },
+                    { onSuccess: () => setRestoreProject(null) },
+                  );
+                }
+              }}
+            >
+              {setStage.isPending ? 'Restoring...' : 'Restore'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

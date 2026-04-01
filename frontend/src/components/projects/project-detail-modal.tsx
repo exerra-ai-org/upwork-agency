@@ -206,6 +206,8 @@ interface BannerProps {
   hasVideos: boolean;
   onAdvance: () => void;
   onSetStage: (stage: ProjectStage) => void;
+  onConfirmLost: () => void;
+  onConfirmCancel: () => void;
   onResubmitReview: () => void;
   onSwitchToVideos: () => void;
   isPending: boolean;
@@ -215,6 +217,8 @@ function StageActionBanner({
   project,
   role,
   hasVideos,
+  onConfirmLost,
+  onConfirmCancel,
   onAdvance,
   onSetStage,
   onResubmitReview,
@@ -352,7 +356,7 @@ function StageActionBanner({
         label: 'Mark as Lost',
         icon: <XCircle className="mr-1 h-3 w-3" />,
         variant: 'destructive',
-        onClick: () => onSetStage(ProjectStage.LOST),
+        onClick: onConfirmLost,
       });
     }
     if (role === 'admin') {
@@ -360,7 +364,7 @@ function StageActionBanner({
         label: 'Cancel Project',
         icon: <AlertTriangle className="mr-1 h-3 w-3" />,
         variant: 'outline',
-        onClick: () => onSetStage(ProjectStage.CANCELLED),
+        onClick: onConfirmCancel,
       });
     }
   }
@@ -410,7 +414,7 @@ function StageActionBanner({
               size="sm"
               onClick={primaryAction}
               disabled={isPending}
-              className="w-full relative group overflow-hidden bg-amber hover:bg-amber/90 text-amber-foreground shadow-glow-amber border border-amber/50 animate-pulse hover:animate-none transition-all duration-300"
+              className="w-full relative group overflow-hidden bg-amber hover:bg-amber/90 text-amber-foreground shadow-glow-amber border border-amber/50 animate-glow-amber-slow hover:animate-none transition-all duration-300"
             >
               <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out" />
               <span className="relative z-10 flex items-center justify-center">
@@ -629,6 +633,10 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
   // Link add form
   const [addingLink, setAddingLink] = useState(false);
   const [linkForm, setLinkForm] = useState({ label: '', url: '', type: 'OTHER' });
+
+  // Confirmation dialogs
+  const [confirmLostOpen, setConfirmLostOpen] = useState(false);
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
 
   // Closer assignment (for overview tab)
   const [selectedCloser, setSelectedCloser] = useState('');
@@ -1167,7 +1175,7 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
                   >
                     {/* Last edited info */}
                     {project.lastEditedBy && (
-                      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <p className="pt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Clock className="h-3 w-3" />
                         Last edited by{' '}
                         <span className="font-medium text-foreground">
@@ -1952,7 +1960,7 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
               <div className="w-[40%] flex flex-col bg-muted/20">
                 <div className="p-6 border-b border-border/50 shrink-0">
                   <h2 className="text-lg font-semibold flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-amber shadow-glow-amber animate-pulse" />
+                    <span className="h-2 w-2 rounded-full bg-amber shadow-glow-amber animate-glow-amber-slow" />
                     Action Center
                   </h2>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -1968,6 +1976,8 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
                     hasVideos={videos.length > 0}
                     onAdvance={handleAdvance}
                     onSetStage={handleSetStage}
+                    onConfirmLost={() => setConfirmLostOpen(true)}
+                    onConfirmCancel={() => setConfirmCancelOpen(true)}
                     onResubmitReview={handleResubmitReview}
                     onSwitchToVideos={() => {
                       setActiveTab('videos');
@@ -2003,6 +2013,65 @@ export function ProjectDetailModal({ projectId, onClose }: ProjectDetailModalPro
           </>
         )}
       </DialogContent>
+
+      {/* Confirmation: Mark as Lost */}
+      <Dialog open={confirmLostOpen} onOpenChange={setConfirmLostOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <XCircle className="h-5 w-5 text-destructive" />
+              Mark as Lost
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to mark this project as lost? This action can be reversed by an
+              admin.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setConfirmLostOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                handleSetStage(ProjectStage.LOST);
+                setConfirmLostOpen(false);
+              }}
+            >
+              Confirm Lost
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmation: Cancel Project */}
+      <Dialog open={confirmCancelOpen} onOpenChange={setConfirmCancelOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-warning" />
+              Cancel Project
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to cancel this project? This action can be reversed by an admin.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setConfirmCancelOpen(false)}>
+              Go Back
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                handleSetStage(ProjectStage.CANCELLED);
+                setConfirmCancelOpen(false);
+              }}
+            >
+              Confirm Cancel
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

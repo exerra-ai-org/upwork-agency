@@ -109,6 +109,10 @@ const config: Config = {
           '0%, 100%': { boxShadow: '0 0 12px hsl(var(--primary) / 0.3)' },
           '50%': { boxShadow: '0 0 28px hsl(var(--primary) / 0.55)' },
         },
+        'glow-amber-slow': {
+          '0%, 100%': { boxShadow: '0 0 8px hsl(var(--amber) / 0.15)' },
+          '50%': { boxShadow: '0 0 20px hsl(var(--amber) / 0.35)' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
@@ -120,6 +124,7 @@ const config: Config = {
         'scale-in': 'scale-in 0.2s ease-out',
         shimmer: 'shimmer 2s linear infinite',
         'pulse-glow': 'pulse-glow 2.5s ease-in-out infinite',
+        'glow-amber-slow': 'glow-amber-slow 3s ease-in-out infinite',
       },
     },
   },

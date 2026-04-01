@@ -1,11 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useTasks, useCreateTask, useUpdateTask } from '@/hooks/use-tasks';
+import { useProjectTasks, useCreateTask } from '@/hooks/use-tasks';
 import { useProjects } from '@/hooks/use-projects';
+import { useAuthContext } from '@/components/auth-provider';
+import TaskKanban from '@/components/tasks/task-kanban';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -26,361 +27,193 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Plus } from 'lucide-react';
+import { Plus, ListChecks, Info } from 'lucide-react';
+import { ProjectStage } from '@/types';
 
-const STATUS_OPTIONS = [
-  { label: 'All Statuses', value: 'all' },
-  { label: 'Todo', value: 'TODO' },
-  { label: 'In Progress', value: 'IN_PROGRESS' },
-  { label: 'In Review', value: 'IN_REVIEW' },
-  { label: 'Done', value: 'DONE' },
-  { label: 'Blocked', value: 'BLOCKED' },
-];
-
-const statusVariant: Record<
-  string,
-  'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning'
-> = {
-  TODO: 'secondary',
-  IN_PROGRESS: 'default',
-  IN_REVIEW: 'warning',
-  DONE: 'success',
-  BLOCKED: 'destructive',
-};
+const DELIVERY_STAGES = [ProjectStage.IN_PROGRESS, ProjectStage.WON, ProjectStage.COMPLETED];
 
 export default function TasksPage() {
-  const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState('all');
+  const { user, activeOrganizationId } = useAuthContext();
+  const role = user?.role?.toLowerCase() ?? '';
+  const canCreate = ['admin', 'project_manager', 'operator'].includes(role);
+
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [createOpen, setCreateOpen] = useState(false);
-  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
-  const [editingTaskId, setEditingTaskId] = useState('');
-  const [newStatus, setNewStatus] = useState('');
-  const limit = 10;
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskDescription, setTaskDescription] = useState('');
+  const [taskPriority, setTaskPriority] = useState('0');
+  const [taskUrgent, setTaskUrgent] = useState(false);
 
-  const { data, isLoading, isError, error } = useTasks({
-    page,
-    limit,
-    status: statusFilter !== 'all' ? statusFilter : undefined,
+  // Fetch delivery-phase projects for the project selector
+  const { data: projectsData } = useProjects({
+    limit: 200,
+    organizationId: activeOrganizationId ?? undefined,
   });
+  const deliveryProjects =
+    projectsData?.data?.filter((p) => DELIVERY_STAGES.includes(p.stage)) ?? [];
 
+  // Fetch tasks for selected project
+  const { data: tasks, isLoading: tasksLoading } = useProjectTasks(selectedProjectId);
   const createTask = useCreateTask();
-  const updateTask = useUpdateTask();
-  const { data: projectsData } = useProjects({ limit: 100 });
 
-  const [form, setForm] = useState({
-    projectId: '',
-    title: '',
-    description: '',
-    priority: '1',
-    estimatedHours: '',
-  });
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await createTask.mutateAsync({
-      projectId: form.projectId,
-      title: form.title,
-      description: form.description || undefined,
-      priority: parseInt(form.priority),
-      estimatedHours: form.estimatedHours ? parseFloat(form.estimatedHours) : undefined,
-    } as Parameters<typeof createTask.mutateAsync>[0]);
-    setForm({ projectId: '', title: '', description: '', priority: '1', estimatedHours: '' });
-    setCreateOpen(false);
-  };
-
-  const openStatusDialog = (taskId: string, currentStatus: string) => {
-    setEditingTaskId(taskId);
-    setNewStatus(currentStatus);
-    setStatusDialogOpen(true);
-  };
-
-  const handleStatusUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await updateTask.mutateAsync({ id: editingTaskId, status: newStatus } as Parameters<
-      typeof updateTask.mutateAsync
-    >[0]);
-    setStatusDialogOpen(false);
-  };
+  // Auto-select first project if none selected
+  if (!selectedProjectId && deliveryProjects.length > 0) {
+    setSelectedProjectId(deliveryProjects[0].id);
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Tasks</h1>
-          <p className="text-muted-foreground">Manage development tasks and assignments</p>
+    <div className="flex h-[calc(100vh-4rem)] flex-col gap-4 overflow-hidden p-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between shrink-0">
+        <div className="flex items-center gap-3">
+          <ListChecks className="h-6 w-6 text-primary" />
+          <div>
+            <h1 className="gradient-text text-2xl font-bold tracking-tight">Tasks</h1>
+            <p className="text-sm text-muted-foreground">Kanban board for project tasks</p>
+          </div>
         </div>
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              New Task
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <form onSubmit={handleCreate}>
-              <DialogHeader>
-                <DialogTitle>Create Task</DialogTitle>
-                <DialogDescription>Add a new task to a project.</DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="taskProjectId">Project *</Label>
-                  <Select
-                    value={form.projectId}
-                    onValueChange={(v) => setForm((p) => ({ ...p, projectId: v }))}
-                  >
-                    <SelectTrigger id="taskProjectId">
-                      <SelectValue placeholder="Select project" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {projectsData?.data.map((proj) => (
-                        <SelectItem key={proj.id} value={proj.id}>
-                          {proj.title || 'Untitled'}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+
+        <div className="flex items-center gap-3">
+          {/* Project selector */}
+          <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+            <SelectTrigger className="w-72">
+              <SelectValue placeholder="Select a project..." />
+            </SelectTrigger>
+            <SelectContent>
+              {deliveryProjects.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.title}
+                </SelectItem>
+              ))}
+              {deliveryProjects.length === 0 && (
+                <div className="px-3 py-2 text-xs text-muted-foreground">
+                  No delivery-phase projects found
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="taskTitle">Title *</Label>
-                  <Input
-                    id="taskTitle"
-                    value={form.title}
-                    onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-                    placeholder="e.g. Implement user authentication"
-                    required
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="taskDesc">Description</Label>
-                  <Textarea
-                    id="taskDesc"
-                    value={form.description}
-                    onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-                    placeholder="Task details..."
-                    rows={3}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="taskPriority">Priority (1=highest)</Label>
-                    <Input
-                      id="taskPriority"
-                      type="number"
-                      min="1"
-                      max="10"
-                      value={form.priority}
-                      onChange={(e) => setForm((p) => ({ ...p, priority: e.target.value }))}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="taskEstHours">Est. Hours</Label>
-                    <Input
-                      id="taskEstHours"
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      value={form.estimatedHours}
-                      onChange={(e) => setForm((p) => ({ ...p, estimatedHours: e.target.value }))}
-                    />
-                  </div>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  type="submit"
-                  disabled={createTask.isPending || !form.projectId || !form.title}
-                >
-                  {createTask.isPending ? 'Creating...' : 'Create Task'}
+              )}
+            </SelectContent>
+          </Select>
+
+          {/* Create task */}
+          {canCreate && selectedProjectId && (
+            <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm">
+                  <Plus className="mr-1 h-4 w-4" />
+                  Add Task
                 </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create Task</DialogTitle>
+                  <DialogDescription>Add a new task to the selected project.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3 py-2">
+                  <div className="space-y-1.5">
+                    <Label>Title</Label>
+                    <Input
+                      value={taskTitle}
+                      onChange={(e) => setTaskTitle(e.target.value)}
+                      placeholder="Task title"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Description</Label>
+                    <Textarea
+                      value={taskDescription}
+                      onChange={(e) => setTaskDescription(e.target.value)}
+                      placeholder="Optional description"
+                      rows={2}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Priority (0-10)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="10"
+                        value={taskPriority}
+                        onChange={(e) => setTaskPriority(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex items-end gap-2 pb-1">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={taskUrgent}
+                          onChange={(e) => setTaskUrgent(e.target.checked)}
+                          className="rounded border-border"
+                        />
+                        <span className="text-sm text-destructive font-medium">Urgent</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setCreateOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    disabled={!taskTitle || createTask.isPending}
+                    onClick={() => {
+                      createTask.mutate(
+                        {
+                          projectId: selectedProjectId,
+                          title: taskTitle,
+                          description: taskDescription || undefined,
+                          priority: parseInt(taskPriority) || 0,
+                          isUrgent: taskUrgent || undefined,
+                        },
+                        {
+                          onSuccess: () => {
+                            setTaskTitle('');
+                            setTaskDescription('');
+                            setTaskPriority('0');
+                            setTaskUrgent(false);
+                            setCreateOpen(false);
+                          },
+                        },
+                      );
+                    }}
+                  >
+                    {createTask.isPending ? 'Creating...' : 'Create Task'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
       </div>
 
-      <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
-        <DialogContent>
-          <form onSubmit={handleStatusUpdate}>
-            <DialogHeader>
-              <DialogTitle>Update Task Status</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label>New Status</Label>
-                <Select value={newStatus} onValueChange={setNewStatus}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="TODO">Todo</SelectItem>
-                    <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                    <SelectItem value="IN_REVIEW">In Review</SelectItem>
-                    <SelectItem value="DONE">Done</SelectItem>
-                    <SelectItem value="BLOCKED">Blocked</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="submit" disabled={updateTask.isPending}>
-                {updateTask.isPending ? 'Updating...' : 'Update Status'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <div className="flex items-center gap-4">
-        <Select
-          value={statusFilter}
-          onValueChange={(v) => {
-            setStatusFilter(v);
-            setPage(1);
-          }}
-        >
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter by status" />
-          </SelectTrigger>
-          <SelectContent>
-            {STATUS_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <span className="text-sm text-muted-foreground">
-          {data ? `${data.meta.total} tasks` : 'Loading...'}
+      {/* Info bar */}
+      <div className="flex items-center gap-2 rounded-md bg-muted/30 px-3 py-2 text-xs text-muted-foreground shrink-0">
+        <Info className="h-3.5 w-3.5 shrink-0" />
+        <span>
+          <strong>DONE</strong> = development complete. <strong>FINALISED</strong> = billed and
+          shared with client.
         </span>
       </div>
 
-      <Card>
-        <CardHeader className="sr-only">
-          <CardTitle>Tasks Table</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Project</TableHead>
-                <TableHead>Assignee</TableHead>
-                <TableHead>Priority</TableHead>
-                <TableHead>Est. Hours</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-[100px]" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading &&
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {Array.from({ length: 7 }).map((_, j) => (
-                      <TableCell key={j}>
-                        <Skeleton className="h-4 w-20" />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-
-              {isError && (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12 text-destructive">
-                    Failed to load tasks. {(error as Error)?.message || 'Unknown error'}
-                  </TableCell>
-                </TableRow>
-              )}
-
-              {data?.data.map((task) => (
-                <TableRow key={task.id}>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{task.title}</p>
-                      {task.description && (
-                        <p className="text-xs text-muted-foreground truncate max-w-[250px]">
-                          {task.description}
-                        </p>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {task.project?.title || '---'}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {task.assignee
-                      ? `${task.assignee.firstName || ''} ${task.assignee.lastName || ''}`.trim() ||
-                        task.assignee.email
-                      : 'Unassigned'}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">P{task.priority}</Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {task.estimatedHours ? `${task.estimatedHours}h` : '---'}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={statusVariant[task.status] || 'secondary'}>
-                      {task.status.replace(/_/g, ' ')}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openStatusDialog(task.id, task.status)}
-                    >
-                      Update
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-
-              {data && data.data.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
-                    No tasks found.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-
-          {data && data.meta.totalPages > 1 && (
-            <div className="border-t px-4 py-3 flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                Page {data.meta.page} of {data.meta.totalPages}
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.min(data.meta.totalPages, p + 1))}
-                  disabled={page >= data.meta.totalPages}
-                >
-                  Next
-                </Button>
+      {/* Kanban */}
+      <div className="flex-1 overflow-hidden">
+        {!selectedProjectId ? (
+          <div className="flex items-center justify-center h-full text-muted-foreground">
+            Select a project to view its tasks
+          </div>
+        ) : tasksLoading ? (
+          <div className="flex gap-4 h-full">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="min-w-[280px] w-[280px] space-y-3">
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-24 w-full" />
               </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            ))}
+          </div>
+        ) : (
+          <TaskKanban tasks={tasks ?? []} projectId={selectedProjectId} />
+        )}
+      </div>
     </div>
   );
 }

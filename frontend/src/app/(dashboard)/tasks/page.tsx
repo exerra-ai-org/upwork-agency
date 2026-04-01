@@ -27,7 +27,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Plus, ListChecks, Info } from 'lucide-react';
+import { Plus, ListChecks } from 'lucide-react';
 import { ProjectStage } from '@/types';
 
 const DELIVERY_STAGES = [ProjectStage.IN_PROGRESS, ProjectStage.WON, ProjectStage.COMPLETED];
@@ -183,15 +183,6 @@ export default function TasksPage() {
             </Dialog>
           )}
         </div>
-      </div>
-
-      {/* Info bar */}
-      <div className="flex items-center gap-2 rounded-md bg-muted/30 px-3 py-2 text-xs text-muted-foreground shrink-0">
-        <Info className="h-3.5 w-3.5 shrink-0" />
-        <span>
-          <strong>DONE</strong> = development complete. <strong>FINALISED</strong> = billed and
-          shared with client.
-        </span>
       </div>
 
       {/* Kanban */}

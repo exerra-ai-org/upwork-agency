@@ -6,20 +6,41 @@ import { motion } from 'framer-motion';
 import { AlertTriangle, Clock, User } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
+import { TaskStatus } from '@/types';
 import type { Task } from '@/types';
 
 interface TaskKanbanCardProps {
   task: Task;
   index: number;
+  showProject?: boolean;
 }
 
-function getPriorityClasses(priority: number) {
-  if (priority >= 7) return 'bg-primary/10 border-primary/30';
-  if (priority >= 4) return 'bg-primary/5 border-primary/20';
-  return 'bg-card border-border/50';
+function getStatusClasses(status: TaskStatus) {
+  switch (status) {
+    case TaskStatus.TODO:
+      return 'bg-slate-500/8 border-slate-500/20';
+    case TaskStatus.IN_PROGRESS:
+      return 'bg-blue-500/8 border-blue-500/20';
+    case TaskStatus.IN_REVIEW:
+      return 'bg-amber-500/8 border-amber-500/20';
+    case TaskStatus.DONE:
+      return 'bg-emerald-500/8 border-emerald-500/20';
+    case TaskStatus.BLOCKED:
+      return 'bg-red-500/8 border-red-500/20';
+    case TaskStatus.FINALISED:
+      return 'bg-purple-500/8 border-purple-500/20';
+    default:
+      return 'bg-card border-border/50';
+  }
 }
 
-export default function TaskKanbanCard({ task, index }: TaskKanbanCardProps) {
+function getPriorityBorder(priority: number) {
+  if (priority >= 7) return 'border-primary/40';
+  if (priority >= 4) return 'border-primary/25';
+  return '';
+}
+
+export default function TaskKanbanCard({ task, index, showProject }: TaskKanbanCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     data: { type: 'task', task },
@@ -45,11 +66,17 @@ export default function TaskKanbanCard({ task, index }: TaskKanbanCardProps) {
       transition={{ duration: 0.2, delay: index * 0.03 }}
       className={`
         cursor-grab rounded-lg border p-3 shadow-sm
-        ${getPriorityClasses(task.priority)}
+        ${getStatusClasses(task.status)}
+        ${getPriorityBorder(task.priority)}
         ${urgentClasses}
         ${isDragging ? 'opacity-50 scale-[0.98]' : ''}
       `}
     >
+      {showProject && task.project && (
+        <p className="mb-1 truncate text-[10px] font-medium text-muted-foreground">
+          {(task.project as { title?: string }).title}
+        </p>
+      )}
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">

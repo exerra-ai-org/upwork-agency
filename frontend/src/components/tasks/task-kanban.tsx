@@ -52,9 +52,10 @@ const COLUMN_BG: Record<string, string> = {
 interface KanbanColumnProps {
   column: { id: TaskStatus; title: string; color: string };
   tasks: Task[];
+  showProject?: boolean;
 }
 
-function KanbanColumn({ column, tasks }: KanbanColumnProps) {
+function KanbanColumn({ column, tasks, showProject }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
 
   const taskIds = tasks.map((t) => t.id);
@@ -84,7 +85,7 @@ function KanbanColumn({ column, tasks }: KanbanColumnProps) {
         <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
           <div className="flex flex-col gap-2">
             {tasks.map((task, i) => (
-              <TaskKanbanCard key={task.id} task={task} index={i} />
+              <TaskKanbanCard key={task.id} task={task} index={i} showProject={showProject} />
             ))}
             {tasks.length === 0 && (
               <p className="py-8 text-center text-xs text-muted-foreground/60">No tasks</p>
@@ -106,7 +107,10 @@ interface TaskKanbanProps {
 export default function TaskKanban({ tasks, projectId }: TaskKanbanProps) {
   const [showFinalised, setShowFinalised] = useState(false);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [optimisticTasks, setOptimisticTasks] = useState<Task[] | null>(null);
   const updateTask = useUpdateTask();
+
+  const showProject = !projectId; // show project name when viewing all tasks
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -115,9 +119,10 @@ export default function TaskKanban({ tasks, projectId }: TaskKanbanProps) {
 
   const columns = showFinalised ? [...KANBAN_COLUMNS, FINALISED_COLUMN] : KANBAN_COLUMNS;
 
+  const effectiveTasks = optimisticTasks ?? tasks;
   const tasksByStatus = columns.reduce(
     (acc, col) => {
-      acc[col.id] = tasks.filter((t) => t.status === col.id);
+      acc[col.id] = effectiveTasks.filter((t) => t.status === col.id);
       return acc;
     },
     {} as Record<TaskStatus, Task[]>,
@@ -139,18 +144,29 @@ export default function TaskKanban({ tasks, projectId }: TaskKanbanProps) {
     // Determine target status — over.id could be a column id or another task id
     let newStatus: TaskStatus | undefined;
 
-    // Check if dropped on a column directly
     if (Object.values(TaskStatus).includes(over.id as TaskStatus)) {
       newStatus = over.id as TaskStatus;
     } else {
-      // Dropped on another task — find which column that task belongs to
-      const targetTask = tasks.find((t) => t.id === over.id);
+      const targetTask = effectiveTasks.find((t) => t.id === over.id);
       if (targetTask) newStatus = targetTask.status;
     }
 
     if (!newStatus || newStatus === draggedTask.status) return;
 
-    updateTask.mutate({ id: draggedTask.id, status: newStatus });
+    // Optimistic: update local state immediately
+    const updated = effectiveTasks.map((t) =>
+      t.id === draggedTask.id ? { ...t, status: newStatus! } : t,
+    );
+    setOptimisticTasks(updated);
+
+    // Call backend — clear optimistic state when done
+    updateTask.mutate(
+      { id: draggedTask.id, status: newStatus },
+      {
+        onSuccess: () => {},
+        onSettled: () => setOptimisticTasks(null),
+      },
+    );
   }
 
   return (
@@ -187,7 +203,12 @@ export default function TaskKanban({ tasks, projectId }: TaskKanbanProps) {
           transition={{ duration: 0.3 }}
         >
           {columns.map((col) => (
-            <KanbanColumn key={col.id} column={col} tasks={tasksByStatus[col.id] ?? []} />
+            <KanbanColumn
+              key={col.id}
+              column={col}
+              tasks={tasksByStatus[col.id] ?? []}
+              showProject={showProject}
+            />
           ))}
         </motion.div>
 

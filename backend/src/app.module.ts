@@ -17,6 +17,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { ChatsModule } from './modules/chats/chats.module';
 import { JwtAuthGuard, RolesGuard } from './common/guards';
+import { HealthController } from './health.controller';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { JwtAuthGuard, RolesGuard } from './common/guards';
     OrganizationsModule,
     ChatsModule,
   ],
+  controllers: [HealthController],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },

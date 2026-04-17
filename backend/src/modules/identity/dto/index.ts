@@ -5,3 +5,5 @@ export * from './update-user.dto';
 export * from './change-password.dto';
 export * from './update-profile.dto';
 export * from './switch-org.dto';
+export * from './invite-user.dto';
+export * from './accept-invite.dto';

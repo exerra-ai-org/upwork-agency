@@ -29,4 +29,9 @@ export class CreateUserDto {
   @IsOptional()
   @IsUUID()
   teamId?: string;
+
+  @ApiPropertyOptional({ description: 'Organization ID to assign to the user' })
+  @IsOptional()
+  @IsUUID()
+  organizationId?: string;
 }

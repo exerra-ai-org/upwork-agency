@@ -9,7 +9,9 @@ import { User } from '@prisma/client';
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreateUserDto): Promise<Omit<User, 'passwordHash'>> {
+  async create(
+    dto: CreateUserDto & { organizationId?: string },
+  ): Promise<Omit<User, 'passwordHash'>> {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -20,16 +22,29 @@ export class UsersService {
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
-    const user = await this.prisma.user.create({
-      data: {
-        email: dto.email,
-        passwordHash,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        roleId: dto.roleId,
-        teamId: dto.teamId,
-      },
-      include: { role: true, team: true },
+    const user = await this.prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          email: dto.email,
+          passwordHash,
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          roleId: dto.roleId,
+          teamId: dto.teamId,
+        },
+        include: { role: true, team: true },
+      });
+
+      if (dto.organizationId) {
+        await tx.userOrganization.create({
+          data: {
+            userId: createdUser.id,
+            organizationId: dto.organizationId,
+          },
+        });
+      }
+
+      return createdUser;
     });
 
     const { passwordHash: _, ...result } = user;

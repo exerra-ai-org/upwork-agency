@@ -1,9 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { useUsers, useCreateUser, useUpdateUser } from '@/hooks/use-users';
+import {
+  useUsers,
+  useCreateUser,
+  useUpdateUser,
+  useInviteUser,
+  useInvitations,
+  useResendInvite,
+} from '@/hooks/use-users';
 import { useRoles } from '@/hooks/use-roles';
 import { useTeams } from '@/hooks/use-teams';
+import { useOrganizations } from '@/hooks/use-organizations';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -44,6 +52,7 @@ const EMPTY_CREATE = {
   lastName: '',
   roleId: '',
   teamId: '',
+  organizationId: '',
 };
 
 const EMPTY_EDIT = {
@@ -59,6 +68,7 @@ const EMPTY_EDIT = {
 export default function UsersPage() {
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const limit = 10;
@@ -66,10 +76,20 @@ export default function UsersPage() {
   const { data, isLoading, isError, error } = useUsers({ page, limit });
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
+  const inviteUser = useInviteUser();
+  const resendInvite = useResendInvite();
   const { data: roles } = useRoles();
   const { data: teams } = useTeams();
+  const { data: organizations } = useOrganizations(true);
+  const { data: invites } = useInvitations();
 
   const [createForm, setCreateForm] = useState(EMPTY_CREATE);
+  const [inviteForm, setInviteForm] = useState({
+    email: '',
+    roleId: '',
+    teamId: '',
+    organizationId: '',
+  });
   const [editForm, setEditForm] = useState(EMPTY_EDIT);
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -81,9 +101,25 @@ export default function UsersPage() {
       lastName: createForm.lastName || undefined,
       roleId: createForm.roleId,
       teamId: createForm.teamId && createForm.teamId !== 'none' ? createForm.teamId : undefined,
+      organizationId:
+        createForm.organizationId && createForm.organizationId !== 'none'
+          ? createForm.organizationId
+          : undefined,
     });
     setCreateForm(EMPTY_CREATE);
     setCreateOpen(false);
+  };
+
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await inviteUser.mutateAsync({
+      email: inviteForm.email,
+      roleId: inviteForm.roleId,
+      organizationId: inviteForm.organizationId,
+      teamId: inviteForm.teamId && inviteForm.teamId !== 'none' ? inviteForm.teamId : undefined,
+    });
+    setInviteForm({ email: '', roleId: '', organizationId: '', teamId: '' });
+    setInviteOpen(false);
   };
 
   const openEdit = (user: User) => {
@@ -125,117 +161,241 @@ export default function UsersPage() {
           <p className="text-muted-foreground">Manage platform users and roles</p>
         </div>
 
-        {/* Create User Dialog */}
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add User
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <form onSubmit={handleCreate}>
-              <DialogHeader>
-                <DialogTitle>Create User</DialogTitle>
-                <DialogDescription>Add a new user to the platform.</DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="userEmail">Email *</Label>
-                  <Input
-                    id="userEmail"
-                    type="email"
-                    value={createForm.email}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, email: e.target.value }))}
-                    placeholder="user@example.com"
-                    required
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="userPassword">Password *</Label>
-                  <Input
-                    id="userPassword"
-                    type="password"
-                    value={createForm.password}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, password: e.target.value }))}
-                    placeholder="Minimum 6 characters"
-                    required
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+        <div className="flex items-center gap-2">
+          {/* Invite User Dialog */}
+          <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Plus className="mr-2 h-4 w-4" />
+                Invite User
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <form onSubmit={handleInvite}>
+                <DialogHeader>
+                  <DialogTitle>Invite User</DialogTitle>
+                  <DialogDescription>Send a secure invite link via email.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
                   <div className="grid gap-2">
-                    <Label htmlFor="userFirstName">First Name</Label>
+                    <Label htmlFor="inviteEmail">Email *</Label>
                     <Input
-                      id="userFirstName"
-                      value={createForm.firstName}
-                      onChange={(e) => setCreateForm((p) => ({ ...p, firstName: e.target.value }))}
+                      id="inviteEmail"
+                      type="email"
+                      value={inviteForm.email}
+                      onChange={(e) => setInviteForm((p) => ({ ...p, email: e.target.value }))}
+                      placeholder="user@example.com"
+                      required
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="userLastName">Last Name</Label>
-                    <Input
-                      id="userLastName"
-                      value={createForm.lastName}
-                      onChange={(e) => setCreateForm((p) => ({ ...p, lastName: e.target.value }))}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="userRoleId">Role *</Label>
+                    <Label htmlFor="inviteOrg">Organization *</Label>
                     <Select
-                      value={createForm.roleId}
-                      onValueChange={(v) => setCreateForm((p) => ({ ...p, roleId: v }))}
+                      value={inviteForm.organizationId}
+                      onValueChange={(v) => setInviteForm((p) => ({ ...p, organizationId: v }))}
                     >
-                      <SelectTrigger id="userRoleId">
-                        <SelectValue placeholder="Select role" />
+                      <SelectTrigger id="inviteOrg">
+                        <SelectValue placeholder="Select organization" />
                       </SelectTrigger>
                       <SelectContent>
-                        {roles?.map((role) => (
-                          <SelectItem key={role.id} value={role.id}>
-                            {role.name.replace(/_/g, ' ')}
+                        {organizations?.map((org) => (
+                          <SelectItem key={org.id} value={org.id}>
+                            {org.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="inviteRole">Role *</Label>
+                      <Select
+                        value={inviteForm.roleId}
+                        onValueChange={(v) => setInviteForm((p) => ({ ...p, roleId: v }))}
+                      >
+                        <SelectTrigger id="inviteRole">
+                          <SelectValue placeholder="Select role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {roles?.map((role) => (
+                            <SelectItem key={role.id} value={role.id}>
+                              {role.name.replace(/_/g, ' ')}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="inviteTeam">Team</Label>
+                      <Select
+                        value={inviteForm.teamId}
+                        onValueChange={(v) => setInviteForm((p) => ({ ...p, teamId: v }))}
+                      >
+                        <SelectTrigger id="inviteTeam">
+                          <SelectValue placeholder="Select team" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No Team</SelectItem>
+                          {teams?.map((team) => (
+                            <SelectItem key={team.id} value={team.id}>
+                              {team.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button
+                    type="submit"
+                    disabled={
+                      inviteUser.isPending ||
+                      !inviteForm.email ||
+                      !inviteForm.roleId ||
+                      !inviteForm.organizationId
+                    }
+                  >
+                    {inviteUser.isPending ? 'Sending...' : 'Send Invite'}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          {/* Create User Dialog */}
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Add User
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <form onSubmit={handleCreate}>
+                <DialogHeader>
+                  <DialogTitle>Create User</DialogTitle>
+                  <DialogDescription>Add a new user to the platform.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
                   <div className="grid gap-2">
-                    <Label htmlFor="userTeamId">Team</Label>
+                    <Label htmlFor="userEmail">Email *</Label>
+                    <Input
+                      id="userEmail"
+                      type="email"
+                      value={createForm.email}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, email: e.target.value }))}
+                      placeholder="user@example.com"
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="userPassword">Password *</Label>
+                    <Input
+                      id="userPassword"
+                      type="password"
+                      value={createForm.password}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, password: e.target.value }))}
+                      placeholder="Minimum 6 characters"
+                      required
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="userFirstName">First Name</Label>
+                      <Input
+                        id="userFirstName"
+                        value={createForm.firstName}
+                        onChange={(e) =>
+                          setCreateForm((p) => ({ ...p, firstName: e.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="userLastName">Last Name</Label>
+                      <Input
+                        id="userLastName"
+                        value={createForm.lastName}
+                        onChange={(e) => setCreateForm((p) => ({ ...p, lastName: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="userRoleId">Role *</Label>
+                      <Select
+                        value={createForm.roleId}
+                        onValueChange={(v) => setCreateForm((p) => ({ ...p, roleId: v }))}
+                      >
+                        <SelectTrigger id="userRoleId">
+                          <SelectValue placeholder="Select role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {roles?.map((role) => (
+                            <SelectItem key={role.id} value={role.id}>
+                              {role.name.replace(/_/g, ' ')}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="userTeamId">Team</Label>
+                      <Select
+                        value={createForm.teamId}
+                        onValueChange={(v) => setCreateForm((p) => ({ ...p, teamId: v }))}
+                      >
+                        <SelectTrigger id="userTeamId">
+                          <SelectValue placeholder="Select team" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No Team</SelectItem>
+                          {teams?.map((team) => (
+                            <SelectItem key={team.id} value={team.id}>
+                              {team.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="userOrgId">Organization</Label>
                     <Select
-                      value={createForm.teamId}
-                      onValueChange={(v) => setCreateForm((p) => ({ ...p, teamId: v }))}
+                      value={createForm.organizationId}
+                      onValueChange={(v) => setCreateForm((p) => ({ ...p, organizationId: v }))}
                     >
-                      <SelectTrigger id="userTeamId">
-                        <SelectValue placeholder="Select team" />
+                      <SelectTrigger id="userOrgId">
+                        <SelectValue placeholder="Select organization" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">No Team</SelectItem>
-                        {teams?.map((team) => (
-                          <SelectItem key={team.id} value={team.id}>
-                            {team.name}
+                        <SelectItem value="none">No Organization</SelectItem>
+                        {organizations?.map((org) => (
+                          <SelectItem key={org.id} value={org.id}>
+                            {org.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  type="submit"
-                  disabled={
-                    createUser.isPending ||
-                    !createForm.email ||
-                    !createForm.password ||
-                    !createForm.roleId
-                  }
-                >
-                  {createUser.isPending ? 'Creating...' : 'Create User'}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+                <DialogFooter>
+                  <Button
+                    type="submit"
+                    disabled={
+                      createUser.isPending ||
+                      !createForm.email ||
+                      !createForm.password ||
+                      !createForm.roleId
+                    }
+                  >
+                    {createUser.isPending ? 'Creating...' : 'Create User'}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Edit User Dialog */}
@@ -459,6 +619,66 @@ export default function UsersPage() {
               </div>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Pending Invites</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Email</TableHead>
+                <TableHead>Organization</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Team</TableHead>
+                <TableHead>Expires</TableHead>
+                <TableHead className="w-24" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {invites
+                ?.filter((i) => !i.acceptedAt)
+                .map((invite) => (
+                  <TableRow key={invite.id}>
+                    <TableCell className="font-medium">{invite.email}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {invite.organization?.name ?? '---'}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {invite.role?.name?.replace(/_/g, ' ') || '---'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {invite.team?.name || '---'}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {new Date(invite.expiresAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => resendInvite.mutate(invite.id)}
+                        disabled={resendInvite.isPending}
+                      >
+                        Resend
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              {invites && invites.filter((i) => !i.acceptedAt).length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    No pending invites.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </div>

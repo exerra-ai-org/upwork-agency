@@ -1,7 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useMeetings, useCreateMeeting, useCompleteMeeting } from '@/hooks/use-meetings';
+import {
+  useMeetings,
+  useCreateMeeting,
+  useCompleteMeeting,
+  useUpdateMeeting,
+} from '@/hooks/use-meetings';
 import { useProjects } from '@/hooks/use-projects';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -61,6 +66,15 @@ export default function MeetingsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [completeOpen, setCompleteOpen] = useState(false);
   const [completingId, setCompletingId] = useState('');
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailMeeting, setDetailMeeting] = useState<{
+    id: string;
+    meetingUrl?: string | null;
+    notes?: string | null;
+    fathomUrl?: string | null;
+    loomUrl?: string | null;
+    driveUrl?: string | null;
+  } | null>(null);
   const limit = 10;
 
   const { data, isLoading, isError, error } = useMeetings({
@@ -71,6 +85,7 @@ export default function MeetingsPage() {
 
   const createMeeting = useCreateMeeting();
   const completeMeeting = useCompleteMeeting();
+  const updateMeeting = useUpdateMeeting();
   const { data: projectsData } = useProjects({ limit: 100 });
 
   const [createForm, setCreateForm] = useState({
@@ -129,6 +144,39 @@ export default function MeetingsPage() {
       driveUrl: completeForm.driveUrl || undefined,
     });
     setCompleteOpen(false);
+  };
+
+  const openDetail = (meeting: {
+    id: string;
+    meetingUrl?: string | null;
+    notes?: string | null;
+    fathomUrl?: string | null;
+    loomUrl?: string | null;
+    driveUrl?: string | null;
+  }) => {
+    setDetailMeeting(meeting);
+    setCreateForm((p) => ({ ...p, meetingUrl: meeting.meetingUrl ?? '' }));
+    setCompleteForm({
+      notes: meeting.notes ?? '',
+      fathomUrl: meeting.fathomUrl ?? '',
+      loomUrl: meeting.loomUrl ?? '',
+      driveUrl: meeting.driveUrl ?? '',
+    });
+    setDetailOpen(true);
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!detailMeeting) return;
+    await updateMeeting.mutateAsync({
+      id: detailMeeting.id,
+      meetingUrl: createForm.meetingUrl || undefined,
+      notes: completeForm.notes || undefined,
+      fathomUrl: completeForm.fathomUrl || undefined,
+      loomUrl: completeForm.loomUrl || undefined,
+      driveUrl: completeForm.driveUrl || undefined,
+    });
+    setDetailOpen(false);
   };
 
   return (
@@ -311,6 +359,70 @@ export default function MeetingsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Meeting Details Dialog */}
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+        <DialogContent className="max-w-lg">
+          <form onSubmit={handleUpdate}>
+            <DialogHeader>
+              <DialogTitle>Meeting Details</DialogTitle>
+              <DialogDescription>Update notes and recording links.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label>Meeting URL</Label>
+                <Input
+                  value={createForm.meetingUrl}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, meetingUrl: e.target.value }))}
+                  placeholder="https://meet.google.com/..."
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Notes</Label>
+                <Textarea
+                  value={completeForm.notes}
+                  onChange={(e) => setCompleteForm((p) => ({ ...p, notes: e.target.value }))}
+                  rows={3}
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="grid gap-2">
+                  <Label>Fathom URL</Label>
+                  <Input
+                    value={completeForm.fathomUrl}
+                    onChange={(e) => setCompleteForm((p) => ({ ...p, fathomUrl: e.target.value }))}
+                    placeholder="https://..."
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Loom URL</Label>
+                  <Input
+                    value={completeForm.loomUrl}
+                    onChange={(e) => setCompleteForm((p) => ({ ...p, loomUrl: e.target.value }))}
+                    placeholder="https://..."
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Drive URL</Label>
+                  <Input
+                    value={completeForm.driveUrl}
+                    onChange={(e) => setCompleteForm((p) => ({ ...p, driveUrl: e.target.value }))}
+                    placeholder="https://..."
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" type="button" onClick={() => setDetailOpen(false)}>
+                Close
+              </Button>
+              <Button type="submit" disabled={updateMeeting.isPending}>
+                {updateMeeting.isPending ? 'Saving...' : 'Save'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <div className="flex items-center gap-4">
         <Select
           value={statusFilter}
@@ -373,7 +485,11 @@ export default function MeetingsPage() {
               )}
 
               {data?.data.map((meeting) => (
-                <TableRow key={meeting.id}>
+                <TableRow
+                  key={meeting.id}
+                  className="cursor-pointer"
+                  onClick={() => openDetail(meeting)}
+                >
                   <TableCell className="font-medium">{meeting.project?.title || '---'}</TableCell>
                   <TableCell>
                     <Badge variant="outline">
@@ -390,14 +506,19 @@ export default function MeetingsPage() {
                   </TableCell>
                   <TableCell>
                     {meeting.meetingUrl ? (
-                      <a
-                        href={meeting.meetingUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-primary hover:underline"
-                      >
-                        Join
-                      </a>
+                      meeting.status === 'COMPLETED' ? (
+                        <span className="text-muted-foreground">Join</span>
+                      ) : (
+                        <a
+                          href={meeting.meetingUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-primary hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Join
+                        </a>
+                      )
                     ) : (
                       <span className="text-muted-foreground">---</span>
                     )}
@@ -410,6 +531,7 @@ export default function MeetingsPage() {
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-primary hover:underline"
+                          onClick={(e) => e.stopPropagation()}
                         >
                           Fathom
                         </a>
@@ -420,6 +542,7 @@ export default function MeetingsPage() {
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-primary hover:underline"
+                          onClick={(e) => e.stopPropagation()}
                         >
                           Loom
                         </a>
@@ -430,6 +553,7 @@ export default function MeetingsPage() {
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-primary hover:underline"
+                          onClick={(e) => e.stopPropagation()}
                         >
                           Drive
                         </a>
@@ -441,7 +565,14 @@ export default function MeetingsPage() {
                   </TableCell>
                   <TableCell>
                     {meeting.status === 'SCHEDULED' && (
-                      <Button variant="outline" size="sm" onClick={() => openComplete(meeting.id)}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openComplete(meeting.id);
+                        }}
+                      >
                         <CheckCircle className="mr-1 h-3 w-3" />
                         Complete
                       </Button>

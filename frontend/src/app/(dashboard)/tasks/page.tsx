@@ -44,7 +44,7 @@ export default function TasksPage() {
   const [createProjectId, setCreateProjectId] = useState<string>('');
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDescription, setTaskDescription] = useState('');
-  const [taskPriority, setTaskPriority] = useState('0');
+  const [taskPriority, setTaskPriority] = useState('3');
   const [taskUrgent, setTaskUrgent] = useState(false);
 
   // Fetch delivery-phase projects for the project filter
@@ -151,13 +151,14 @@ export default function TasksPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <Label>Priority (0-10)</Label>
+                      <Label>Priority (P1-P10)</Label>
                       <Input
                         type="number"
-                        min="0"
+                        min="1"
                         max="10"
                         value={taskPriority}
                         onChange={(e) => setTaskPriority(e.target.value)}
+                        disabled={taskUrgent}
                       />
                     </div>
                     <div className="flex items-end gap-2 pb-1">
@@ -168,7 +169,7 @@ export default function TasksPage() {
                           onChange={(e) => setTaskUrgent(e.target.checked)}
                           className="rounded border-border"
                         />
-                        <span className="text-sm text-destructive font-medium">Urgent</span>
+                        <span className="text-sm text-destructive font-medium">Urgent (P0)</span>
                       </label>
                     </div>
                   </div>
@@ -180,19 +181,21 @@ export default function TasksPage() {
                   <Button
                     disabled={!taskTitle || !createProjectId || createTask.isPending}
                     onClick={() => {
+                      const priority = taskUrgent
+                        ? 0
+                        : Math.max(1, Math.min(10, parseInt(taskPriority) || 1));
                       createTask.mutate(
                         {
                           projectId: createProjectId,
                           title: taskTitle,
                           description: taskDescription || undefined,
-                          priority: parseInt(taskPriority) || 0,
-                          isUrgent: taskUrgent || undefined,
+                          priority,
                         },
                         {
                           onSuccess: () => {
                             setTaskTitle('');
                             setTaskDescription('');
-                            setTaskPriority('0');
+                            setTaskPriority('3');
                             setTaskUrgent(false);
                             setCreateProjectId('');
                             setCreateOpen(false);

@@ -20,16 +20,11 @@ export class CreateTaskDto {
   @IsString()
   description?: string;
 
-  @ApiPropertyOptional({ example: 1, default: 0 })
+  @ApiPropertyOptional({ example: 1, minimum: 0, maximum: 10 })
   @IsOptional()
   @IsInt()
   @Min(0)
   priority?: number;
-
-  @ApiPropertyOptional({ example: false })
-  @IsOptional()
-  @IsBoolean()
-  isUrgent?: boolean;
 
   @ApiPropertyOptional({ example: 4.5 })
   @IsOptional()

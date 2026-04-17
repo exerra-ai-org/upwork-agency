@@ -3,7 +3,7 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion } from 'framer-motion';
-import { AlertTriangle, Clock, User } from 'lucide-react';
+import { Clock, User } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { TaskStatus } from '@/types';
@@ -51,9 +51,8 @@ export default function TaskKanbanCard({ task, index, showProject }: TaskKanbanC
     transition,
   };
 
-  const urgentClasses = task.isUrgent
-    ? 'shadow-[0_0_12px_rgba(239,68,68,0.4)] ring-1 ring-red-500/30'
-    : '';
+  const urgentClasses =
+    task.priority === 0 ? 'shadow-[0_0_12px_rgba(239,68,68,0.4)] ring-1 ring-red-500/30' : '';
 
   return (
     <motion.div
@@ -80,7 +79,7 @@ export default function TaskKanbanCard({ task, index, showProject }: TaskKanbanC
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            {task.isUrgent && (
+            {task.priority === 0 && (
               <span className="relative flex h-2 w-2 shrink-0">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
@@ -107,9 +106,9 @@ export default function TaskKanbanCard({ task, index, showProject }: TaskKanbanC
 
         <div className="flex-1" />
 
-        {task.priority > 0 && (
+        {task.priority >= 0 && (
           <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-semibold">
-            P{task.priority}
+            {task.priority === 0 ? 'P0' : `P${task.priority}`}
           </Badge>
         )}
 

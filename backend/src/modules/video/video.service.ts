@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
 import { PaginationDto, PaginatedResult } from '@/common/dto';
 import { CreateVideoProposalDto } from './dto';
-import { VideoProposal } from '@prisma/client';
+import { VideoProposal, ProjectStage, ReviewStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 
 @Injectable()
@@ -10,7 +10,7 @@ export class VideoService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateVideoProposalDto): Promise<VideoProposal> {
-    return this.prisma.videoProposal.create({
+    const video = await this.prisma.videoProposal.create({
       data: {
         projectId: dto.projectId,
         videoUrl: dto.videoUrl,
@@ -21,6 +21,16 @@ export class VideoService {
         thumbnailUrl: dto.thumbnailUrl,
       },
     });
+
+    await this.prisma.project.update({
+      where: { id: dto.projectId },
+      data: {
+        stage: ProjectStage.UNDER_REVIEW,
+        reviewStatus: ReviewStatus.PENDING,
+      },
+    });
+
+    return video;
   }
 
   async findAll(

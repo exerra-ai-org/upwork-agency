@@ -14,6 +14,7 @@ import {
   useCompleteMilestone,
 } from '@/hooks/use-projects';
 import { useProjectTasks, useCreateTask, useUpdateTask } from '@/hooks/use-tasks';
+import TaskKanban from '@/components/tasks/task-kanban';
 import { useMeetings, useCreateMeeting } from '@/hooks/use-meetings';
 import { useUsers } from '@/hooks/use-users';
 import { useAuthContext } from '@/components/auth-provider';
@@ -71,9 +72,7 @@ import {
 
 const STAGE_LABELS: Record<string, string> = {
   [ProjectStage.DISCOVERED]: 'Discovered',
-  [ProjectStage.SCRIPTED]: 'Scripted',
   [ProjectStage.SCRIPT_REVIEW]: 'Script Review',
-  [ProjectStage.VIDEO_DRAFT]: 'Video Draft',
   [ProjectStage.UNDER_REVIEW]: 'Video Review',
   [ProjectStage.ASSIGNED]: 'Assigned',
   [ProjectStage.BID_SUBMITTED]: 'Bid Submitted',
@@ -92,9 +91,7 @@ const STAGE_VARIANT: Record<
   'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning'
 > = {
   DISCOVERED: 'secondary',
-  SCRIPTED: 'default',
   SCRIPT_REVIEW: 'warning',
-  VIDEO_DRAFT: 'default',
   UNDER_REVIEW: 'warning',
   ASSIGNED: 'outline',
   BID_SUBMITTED: 'warning',
@@ -278,7 +275,7 @@ export default function ProjectDetailPage() {
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDescription, setNewTaskDescription] = useState('');
-  const [newTaskPriority, setNewTaskPriority] = useState(5);
+  const [newTaskPriority, setNewTaskPriority] = useState(3);
   const [newTaskUrgent, setNewTaskUrgent] = useState(false);
   const [newTaskAssigneeId, setNewTaskAssigneeId] = useState('');
 
@@ -301,6 +298,7 @@ export default function ProjectDetailPage() {
   const [newMilestoneName, setNewMilestoneName] = useState('');
   const [newMilestoneDueDate, setNewMilestoneDueDate] = useState('');
   const [newMilestoneAmount, setNewMilestoneAmount] = useState('');
+  const [newMilestoneDescription, setNewMilestoneDescription] = useState('');
 
   // Meeting form state
   const [showMeetingForm, setShowMeetingForm] = useState(false);
@@ -369,11 +367,13 @@ export default function ProjectDetailPage() {
   const doneTasks = allTasks.filter(
     (t) => t.status === TaskStatus.DONE || t.status === TaskStatus.FINALISED,
   );
-  const totalHoursBilled = doneTasks.reduce((sum, t) => sum + (t.estimatedHours ?? 0), 0);
-  const currentEarnings =
+  const totalHoursBilledComputed = doneTasks.reduce((sum, t) => sum + (t.estimatedHours ?? 0), 0);
+  const totalHoursBilled = project.hoursBilledOverride ?? totalHoursBilledComputed;
+  const currentEarningsComputed =
     project.pricingType === PricingType.HOURLY
-      ? totalHoursBilled * (project.hourlyRateMin ?? 0)
+      ? totalHoursBilledComputed * (project.hourlyRateMin ?? 0)
       : (project.contractValue ?? project.fixedPrice ?? 0);
+  const currentEarnings = project.currentEarningsOverride ?? currentEarningsComputed;
   const milestonePaymentsAchieved = milestones
     .filter((m) => m.completed)
     .reduce((sum, m) => sum + (m.amount ?? 0), 0);
@@ -395,20 +395,20 @@ export default function ProjectDetailPage() {
 
   function handleCreateTask() {
     if (!newTaskTitle.trim()) return;
+    const priority = newTaskUrgent ? 0 : Math.max(1, Math.min(10, newTaskPriority || 1));
     createTask.mutate(
       {
         projectId: id,
         title: newTaskTitle.trim(),
         description: newTaskDescription.trim() || undefined,
-        priority: newTaskPriority,
-        isUrgent: newTaskUrgent,
+        priority,
         assigneeId: newTaskAssigneeId || undefined,
       },
       {
         onSuccess: () => {
           setNewTaskTitle('');
           setNewTaskDescription('');
-          setNewTaskPriority(5);
+          setNewTaskPriority(3);
           setNewTaskUrgent(false);
           setNewTaskAssigneeId('');
           setShowTaskForm(false);
@@ -461,12 +461,14 @@ export default function ProjectDetailPage() {
       {
         projectId: id,
         name: newMilestoneName.trim(),
+        description: newMilestoneDescription.trim() || undefined,
         dueDate: newMilestoneDueDate || undefined,
         amount: newMilestoneAmount ? Number(newMilestoneAmount) : undefined,
       },
       {
         onSuccess: () => {
           setNewMilestoneName('');
+          setNewMilestoneDescription('');
           setNewMilestoneDueDate('');
           setNewMilestoneAmount('');
           setShowMilestoneForm(false);
@@ -500,17 +502,6 @@ export default function ProjectDetailPage() {
       },
     );
   }
-
-  // ── Group tasks by status ──────────────────────────────────────────────────
-
-  const tasksByStatus = TASK_STATUS_ORDER.reduce(
-    (acc, status) => {
-      const filtered = allTasks.filter((t) => t.status === status);
-      if (filtered.length > 0) acc[status] = filtered;
-      return acc;
-    },
-    {} as Record<TaskStatus, Task[]>,
-  );
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -615,16 +606,17 @@ export default function ProjectDetailPage() {
                 <div className="flex flex-wrap items-end gap-4">
                   <div>
                     <Label htmlFor="task-priority" className="text-sm">
-                      Priority (0-10)
+                      Priority (P1-P10)
                     </Label>
                     <Input
                       id="task-priority"
                       type="number"
-                      min={0}
+                      min={1}
                       max={10}
                       value={newTaskPriority}
                       onChange={(e) => setNewTaskPriority(Number(e.target.value))}
                       className="mt-1 w-20"
+                      disabled={newTaskUrgent}
                     />
                   </div>
                   <div>
@@ -652,7 +644,7 @@ export default function ProjectDetailPage() {
                       onChange={(e) => setNewTaskUrgent(e.target.checked)}
                       className="rounded border-border"
                     />
-                    Urgent
+                    Urgent (P0)
                   </label>
                   <div className="flex gap-2 ml-auto">
                     <Button size="sm" variant="ghost" onClick={() => setShowTaskForm(false)}>
@@ -670,80 +662,14 @@ export default function ProjectDetailPage() {
               </div>
             )}
 
-            {/* Task list grouped by status */}
+            {/* Mini kanban */}
             {allTasks.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">No tasks yet</p>
             ) : (
-              <div className="space-y-4">
-                {TASK_STATUS_ORDER.map((status) => {
-                  const group = tasksByStatus[status];
-                  if (!group) return null;
-                  return (
-                    <div key={status}>
-                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                        {TASK_STATUS_LABELS[status]} ({group.length})
-                      </h3>
-                      <div className="space-y-1.5">
-                        {group.map((task) => (
-                          <div
-                            key={task.id}
-                            className="flex items-center gap-3 rounded-lg border border-border/40 bg-background/50 px-3 py-2"
-                          >
-                            {task.isUrgent && (
-                              <span
-                                className="h-2 w-2 rounded-full bg-red-500 shrink-0"
-                                title="Urgent"
-                              />
-                            )}
-                            <span className="text-sm font-medium flex-1 min-w-0 truncate">
-                              {task.title}
-                            </span>
-                            {task.assignee && (
-                              <Badge variant="outline" className="text-xs shrink-0">
-                                {formatUserName(task.assignee)}
-                              </Badge>
-                            )}
-                            <Badge
-                              variant={
-                                task.priority >= 8
-                                  ? 'destructive'
-                                  : task.priority >= 5
-                                    ? 'warning'
-                                    : 'secondary'
-                              }
-                              className="text-xs shrink-0"
-                            >
-                              P{task.priority}
-                            </Badge>
-                            {canManageTasks(role) ? (
-                              <Select
-                                value={task.status}
-                                onValueChange={(v) =>
-                                  handleTaskStatusChange(task.id, v as TaskStatus)
-                                }
-                              >
-                                <SelectTrigger className="h-7 w-[120px] text-xs shrink-0">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {TASK_STATUS_ORDER.map((s) => (
-                                    <SelectItem key={s} value={s} className="text-xs">
-                                      {TASK_STATUS_LABELS[s]}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            ) : (
-                              <Badge variant="outline" className="text-xs shrink-0">
-                                {TASK_STATUS_LABELS[task.status]}
-                              </Badge>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="overflow-x-auto">
+                <div className="min-w-[880px]">
+                  <TaskKanban tasks={allTasks} projectId={id} />
+                </div>
               </div>
             )}
           </Card>
@@ -811,6 +737,19 @@ export default function ProjectDetailPage() {
                     className="mt-1"
                   />
                 </div>
+                <div>
+                  <Label htmlFor="milestone-desc" className="text-sm">
+                    Description
+                  </Label>
+                  <Textarea
+                    id="milestone-desc"
+                    placeholder="Optional milestone description"
+                    value={newMilestoneDescription}
+                    onChange={(e) => setNewMilestoneDescription(e.target.value)}
+                    rows={2}
+                    className="mt-1"
+                  />
+                </div>
                 <div className="flex flex-wrap items-end gap-4">
                   <div>
                     <Label htmlFor="milestone-due" className="text-sm">
@@ -874,13 +813,20 @@ export default function ProjectDetailPage() {
                     ) : (
                       <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/40 shrink-0" />
                     )}
-                    <span
-                      className={`text-sm font-medium flex-1 min-w-0 truncate ${
-                        milestone.completed ? 'line-through text-muted-foreground' : ''
-                      }`}
-                    >
-                      {milestone.name}
-                    </span>
+                    <div className="flex-1 min-w-0">
+                      <span
+                        className={`text-sm font-medium block truncate ${
+                          milestone.completed ? 'line-through text-muted-foreground' : ''
+                        }`}
+                      >
+                        {milestone.name}
+                      </span>
+                      {milestone.description && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          {milestone.description}
+                        </p>
+                      )}
+                    </div>
                     {milestone.dueDate && (
                       <span className="text-xs text-muted-foreground shrink-0 flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
@@ -1140,15 +1086,63 @@ export default function ProjectDetailPage() {
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">
                   Hours Billed
                 </p>
-                <p className="text-xl font-bold mt-1">{totalHoursBilled.toFixed(1)}</p>
+                <div className="mt-1 flex items-center justify-center gap-2">
+                  <p className="text-xl font-bold">
+                    {totalHoursBilled.toFixed(1)}
+                    {project.hoursBilledOverride != null && (
+                      <span className="text-xs text-muted-foreground ml-1">override</span>
+                    )}
+                  </p>
+                </div>
+                {canManageTasks(role) && (
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    value={project.hoursBilledOverride != null ? project.hoursBilledOverride : ''}
+                    onChange={(e) =>
+                      updateProject.mutate({
+                        id,
+                        hoursBilledOverride: e.target.value ? Number(e.target.value) : undefined,
+                      })
+                    }
+                    placeholder={totalHoursBilledComputed.toFixed(1)}
+                    className="mt-2 h-8 text-xs"
+                  />
+                )}
               </div>
               <div className="rounded-lg border border-border/40 bg-background/50 p-3 text-center">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">
                   Current Earnings
                 </p>
-                <p className="text-xl font-bold mt-1">
-                  {currencyFormatter.format(currentEarnings)}
-                </p>
+                <div className="mt-1 flex items-center justify-center gap-2">
+                  <p className="text-xl font-bold">
+                    {currencyFormatter.format(currentEarnings)}
+                    {project.currentEarningsOverride != null && (
+                      <span className="text-xs text-muted-foreground ml-1">override</span>
+                    )}
+                  </p>
+                </div>
+                {canManageTasks(role) && (
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={
+                      project.currentEarningsOverride != null ? project.currentEarningsOverride : ''
+                    }
+                    onChange={(e) =>
+                      updateProject.mutate({
+                        id,
+                        currentEarningsOverride: e.target.value
+                          ? Number(e.target.value)
+                          : undefined,
+                      })
+                    }
+                    placeholder={currencyFormatter.format(currentEarningsComputed)}
+                    className="mt-2 h-8 text-xs"
+                  />
+                )}
               </div>
               <div className="rounded-lg border border-border/40 bg-background/50 p-3 text-center">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">

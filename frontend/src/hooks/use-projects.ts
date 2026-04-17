@@ -221,6 +221,7 @@ export function useCreateMilestone() {
     }: {
       projectId: string;
       name: string;
+      description?: string;
       dueDate?: string;
       amount?: number;
     }) => {

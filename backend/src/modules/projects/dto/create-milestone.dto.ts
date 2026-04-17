@@ -7,6 +7,11 @@ export class CreateMilestoneDto {
   @IsNotEmpty()
   name: string;
 
+  @ApiPropertyOptional({ example: 'Deliver finalized design assets and handoff notes' })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
   @ApiPropertyOptional({ example: '2026-04-15T00:00:00.000Z' })
   @IsOptional()
   @IsDateString()

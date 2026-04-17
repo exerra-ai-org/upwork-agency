@@ -51,7 +51,7 @@ export class TasksService {
         assignee: { select: { id: true, email: true, firstName: true, lastName: true } },
         project: { select: { id: true, title: true } },
       },
-      orderBy: [{ isUrgent: 'desc' }, { priority: 'desc' }, { createdAt: 'asc' }],
+      orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
     });
   }
 
@@ -61,7 +61,7 @@ export class TasksService {
       include: {
         assignee: { select: { id: true, email: true, firstName: true, lastName: true } },
       },
-      orderBy: [{ isUrgent: 'desc' }, { priority: 'desc' }, { createdAt: 'asc' }],
+      orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
     });
   }
 

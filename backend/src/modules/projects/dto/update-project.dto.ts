@@ -124,6 +124,18 @@ export class UpdateProjectDto {
   @Min(0)
   contractValue?: number;
 
+  @ApiPropertyOptional({ description: 'Manual override for hours billed' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  hoursBilledOverride?: number;
+
+  @ApiPropertyOptional({ description: 'Manual override for current earnings' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  currentEarningsOverride?: number;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsDateString()

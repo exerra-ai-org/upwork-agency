@@ -1,87 +1,49 @@
-name: Deploy to AWS ECS
+name: Deploy backend
 
 on:
   push:
-    branches: [main]
-
-env:
-  AWS_REGION: us-east-1
-  ECS_CLUSTER: aop-cluster
-  BACKEND_SERVICE: aop-backend
-  FRONTEND_SERVICE: aop-frontend
-  BACKEND_REPO: aop/backend
-  FRONTEND_REPO: aop/frontend
+    branches:
+      - main
+    paths:
+      - 'backend/**' # change to your actual backend folder
+      - 'Dockerfile'
+      - '.github/workflows/deploy-backend.yml'
 
 permissions:
   id-token: write
   contents: read
 
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+
 jobs:
   deploy:
-    name: Build & Deploy
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: ${{ secrets.DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
-        id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build & push backend image
+      - name: Build & push image
         env:
-          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_URI: ${{ vars.ECR_REPOSITORY_URL }}:${{ github.sha }}
+        working-directory: ./backend
         run: |
-          docker build -t $REGISTRY/$BACKEND_REPO:$IMAGE_TAG -t $REGISTRY/$BACKEND_REPO:latest backend/
-          docker push $REGISTRY/$BACKEND_REPO:$IMAGE_TAG
-          docker push $REGISTRY/$BACKEND_REPO:latest
+          docker build -t "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
 
-      - name: Build & push frontend image
-        env:
-          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build \
-            --build-arg NEXT_PUBLIC_API_URL=/api \
-            -t $REGISTRY/$FRONTEND_REPO:$IMAGE_TAG \
-            -t $REGISTRY/$FRONTEND_REPO:latest \
-            frontend/
-          docker push $REGISTRY/$FRONTEND_REPO:$IMAGE_TAG
-          docker push $REGISTRY/$FRONTEND_REPO:latest
-
-      - name: Deploy backend to ECS
+      - name: Force new deployment
         run: |
           aws ecs update-service \
-            --cluster $ECS_CLUSTER \
-            --service $BACKEND_SERVICE \
-            --force-new-deployment \
-            --region $AWS_REGION
-
-      - name: Deploy frontend to ECS
-        run: |
-          aws ecs update-service \
-            --cluster $ECS_CLUSTER \
-            --service $FRONTEND_SERVICE \
-            --force-new-deployment \
-            --region $AWS_REGION
-
-      - name: Wait for backend stability
-        run: |
-          aws ecs wait services-stable \
-            --cluster $ECS_CLUSTER \
-            --services $BACKEND_SERVICE \
-            --region $AWS_REGION
-
-      - name: Wait for frontend stability
-        run: |
-          aws ecs wait services-stable \
-            --cluster $ECS_CLUSTER \
-            --services $FRONTEND_SERVICE \
-            --region $AWS_REGION
+            --cluster "${{ vars.ECS_CLUSTER }}" \
+            --service "${{ vars.ECS_SERVICE_NAME }}" \
+            --force-new-deployment

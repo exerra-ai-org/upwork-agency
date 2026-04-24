@@ -27,9 +27,8 @@ COPY --from=build /app/prisma/ prisma/
 COPY --from=build /app/prisma.config.ts ./
 COPY --from=build /app/package.json ./
 
-EXPOSE 3001
 
 ENV NODE_ENV=production
-ENV PORT=3001
+
 
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]

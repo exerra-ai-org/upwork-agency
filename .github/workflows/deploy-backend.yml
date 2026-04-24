@@ -1,58 +1,12 @@
-
-
-
-
-fix
-
-name: Deploy backend                                 
-  on:                                                         
-    push:                                              
-      branches: [main]                                                                        
-      paths:                                                                      
-        - 'backend/**'           # ← change to your actual backend folder                     
-        - 'Dockerfile'                                      
-        - '.github/workflows/deploy-backend.yml'
-  permissions: { id-token: write, contents: read }                                
-  env:                                        
-    AWS_REGION: ${{ vars.AWS_REGION }}                                            
-  jobs:                                                       
-    deploy:                                                 
-      runs-on: ubuntu-latest                                                                  
-      steps:                                                  
-        - uses: actions/checkout@v4                                                           
-        - uses: aws-actions/configure-aws-credentials@v4                                      
-          with:                                               
-            role-to-assume: ${{ secrets.DEPLOY_ROLE_ARN }}                        
-            aws-region: ${{ env.AWS_REGION }}                                                 
-        - uses: aws-actions/amazon-ecr-login@v2                                   
-        - name: Build & push image                                                
-          env:                                                
-            IMAGE_URI: ${{ vars.ECR_REPOSITORY_URL }}:${{ github.sha }}
-          working-directory: ./backend     # ← change if Dockerfile lives elsewhere           
-          run: |                                              
-            docker build -t "$IMAGE_URI" .                  
-            docker push "$IMAGE_URI"                                                          
-        - name: Force new deployment                   
-          run: |                                                                              
-            aws ecs update-service \                          
-              --cluster ${{ vars.ECS_CLUSTER }} \                                             
-              --service ${{ vars.ECS_SERVICE_NAME }} \                                        
-              --force-new-deployment
-
 name: Deploy backend
-
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
-      - 'backend/**' # change to your actual backend folder
-      - 'Dockerfile'
+      - 'backend/**' # ← change to your backend folder
       - '.github/workflows/deploy-backend.yml'
 
-permissions:
-  id-token: write
-  contents: read
+permissions: { id-token: write, contents: read }
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
@@ -60,38 +14,42 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v2
+      - uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build & push image
+        id: build
         env:
           IMAGE_URI: ${{ vars.ECR_REPOSITORY_URL }}:${{ github.sha }}
-        working-directory: ./backend
+        working-directory: ./backend # ← change to wherever Dockerfile lives
         run: |
           docker build -t "$IMAGE_URI" .
           docker push "$IMAGE_URI"
+          echo "image=$IMAGE_URI" >> $GITHUB_OUTPUT
 
-      - name: Force new deployment
+      - name: Pull current task definition
         run: |
-          aws ecs update-service \
-            --cluster "${{ vars.ECS_CLUSTER }}" \
-            --service "${{ vars.ECS_SERVICE_NAME }}" \
-            --force-new-deployment
+          aws ecs describe-task-definition \
+            --task-definition ${{ vars.ECS_SERVICE_NAME }} \
+            --query 'taskDefinition' > task-def.json
 
+      - name: Render new task definition with new image
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-def.json
+          container-name: ${{ vars.ECS_SERVICE_NAME }}
+          image: ${{ steps.build.outputs.image }}
 
-
-Did ChatGPT help you accomplish what you wanted?
-Yes
-Somewhat
-No
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE_NAME }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          wait-for-service-stability: true

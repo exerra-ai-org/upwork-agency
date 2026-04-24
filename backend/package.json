@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "nest build",
+"build": "nest build && tsc-alias",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
@@ -43,7 +43,8 @@
     "resend": "^6.12.0",
     "rxjs": "^7.8.1",
     "uuid": "^10.0.0",
-    "tsx": "^4.19.0"
+    "tsx": "^4.19.0",
+    "tsc-alias": "^1.8.10"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.0",
